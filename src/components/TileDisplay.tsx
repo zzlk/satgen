@@ -21,10 +21,10 @@ export default function TileDisplay({ tiles }: TileDisplayProps) {
           <div key={tile.id} className="tile-item">
             <img
               src={tile.dataUrl}
-              alt={tile.getLabel(tilesX)}
+              alt={tile.getLabel()}
               className="tile-image"
             />
-            <p className="tile-label">{tile.getLabel(tilesX)}</p>
+            <p className="tile-label">{tile.getLabel()}</p>
             <p className="tile-borders">
               Borders: {tile.getBorderCount()} (
               {tile.getAllBorderIds().join(", ")})

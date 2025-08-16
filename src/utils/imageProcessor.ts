@@ -1,4 +1,5 @@
 import { Tile } from "./Tile";
+import { TileCollection } from "./TileCollection";
 
 export interface TileDimensions {
   width: number;
@@ -13,12 +14,7 @@ export interface ProcessImageOptions {
 }
 
 export interface ProcessImageResult {
-  tiles: Tile[];
-  totalTiles: number;
-  imageWidth: number;
-  imageHeight: number;
-  tilesX: number;
-  tilesY: number;
+  tiles: TileCollection;
 }
 
 /**
@@ -109,12 +105,14 @@ export function processImageIntoTiles(
         }
 
         resolve({
-          tiles,
-          totalTiles,
-          imageWidth,
-          imageHeight,
-          tilesX,
-          tilesY,
+          tiles: TileCollection.fromTiles(
+            tiles,
+            totalTiles,
+            imageWidth,
+            imageHeight,
+            tilesX,
+            tilesY
+          ),
         });
       } catch (error) {
         reject(error);

@@ -4,20 +4,23 @@ import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
+import { TileCollection } from "../utils/TileCollection";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [tileWidth, setTileWidth] = useState<number>(64);
   const [tileHeight, setTileHeight] = useState<number>(64);
-  const [tiles, setTiles] = useState<Tile[]>([]);
+  const [tileCollection, setTileCollection] = useState<TileCollection | null>(
+    null
+  );
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-    setTiles([]); // Clear previous tiles when new image is selected
+    setTileCollection(null); // Clear previous tiles when new image is selected
   }, []);
 
   const handleFileRemove = useCallback(() => {
@@ -26,7 +29,7 @@ export default function () {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
-    setTiles([]);
+    setTileCollection(null);
   }, [previewUrl]);
 
   const cutImageIntoTiles = async () => {
@@ -41,7 +44,7 @@ export default function () {
         tileHeight,
       });
 
-      setTiles(result.tiles);
+      setTileCollection(result.tiles);
     } catch (error) {
       console.error("Error processing image:", error);
       alert("Error processing image. Please try again.");
@@ -113,7 +116,7 @@ export default function () {
         </>
       )}
 
-      <TileDisplay tiles={tiles} />
+      <TileDisplay tiles={tileCollection?.tiles || []} />
     </div>
   );
 }

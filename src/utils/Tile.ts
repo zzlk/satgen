@@ -1,8 +1,8 @@
 export interface TileBorders {
-  north: string | null;
-  east: string | null;
-  south: string | null;
-  west: string | null;
+  north: Set<string>;
+  east: Set<string>;
+  south: Set<string>;
+  west: Set<string>;
 }
 
 export class Tile {
@@ -50,10 +50,16 @@ export class Tile {
    */
   private calculateBorders(tilesX: number, tilesY: number): TileBorders {
     return {
-      north: this.y > 0 ? `tile_${this.x}_${this.y - 1}` : null,
-      east: this.x < tilesX - 1 ? `tile_${this.x + 1}_${this.y}` : null,
-      south: this.y < tilesY - 1 ? `tile_${this.x}_${this.y + 1}` : null,
-      west: this.x > 0 ? `tile_${this.x - 1}_${this.y}` : null,
+      north: this.y > 0 ? new Set([`tile_${this.x}_${this.y - 1}`]) : new Set(),
+      east:
+        this.x < tilesX - 1
+          ? new Set([`tile_${this.x + 1}_${this.y}`])
+          : new Set(),
+      south:
+        this.y < tilesY - 1
+          ? new Set([`tile_${this.x}_${this.y + 1}`])
+          : new Set(),
+      west: this.x > 0 ? new Set([`tile_${this.x - 1}_${this.y}`]) : new Set(),
     };
   }
 
@@ -67,12 +73,11 @@ export class Tile {
   }
 
   /**
-   * Gets a human-readable label for the tile
-   * @param tilesX - Number of tiles in X direction
-   * @returns Tile label string
+   * Gets the tile ID as the label
+   * @returns Tile ID string
    */
-  getLabel(tilesX: number): string {
-    return `Tile ${this.getTileNumber(tilesX)}`;
+  getLabel(): string {
+    return this.id;
   }
 
   /**
@@ -85,7 +90,7 @@ export class Tile {
       this.borders.east,
       this.borders.south,
       this.borders.west,
-    ].filter((border) => border !== null).length;
+    ].reduce((total, borderSet) => total + borderSet.size, 0);
   }
 
   /**
@@ -94,29 +99,60 @@ export class Tile {
    * @returns True if the tile has a border in that direction
    */
   hasBorder(direction: keyof TileBorders): boolean {
-    return this.borders[direction] !== null;
+    return this.borders[direction].size > 0;
   }
 
   /**
-   * Gets the ID of the bordering tile in the specified direction
-   * @param direction - Direction to get border from ('north', 'east', 'south', 'west')
-   * @returns Border tile ID or null if no border exists
+   * Gets the IDs of bordering tiles in the specified direction
+   * @param direction - Direction to get borders from ('north', 'east', 'south', 'west')
+   * @returns Array of border tile IDs
    */
-  getBorderId(direction: keyof TileBorders): string | null {
-    return this.borders[direction];
+  getBorderIds(direction: keyof TileBorders): string[] {
+    return Array.from(this.borders[direction]);
   }
 
   /**
    * Gets all bordering tile IDs as an array
-   * @returns Array of bordering tile IDs (excluding null values)
+   * @returns Array of all bordering tile IDs
    */
   getAllBorderIds(): string[] {
-    return [
-      this.borders.north,
-      this.borders.east,
-      this.borders.south,
-      this.borders.west,
-    ].filter((id): id is string => id !== null);
+    const allIds: string[] = [];
+    this.borders.north.forEach((id) => allIds.push(id));
+    this.borders.east.forEach((id) => allIds.push(id));
+    this.borders.south.forEach((id) => allIds.push(id));
+    this.borders.west.forEach((id) => allIds.push(id));
+    return allIds;
+  }
+
+  /**
+   * Adds a border tile ID to a specific direction
+   * @param direction - Direction to add border to ('north', 'east', 'south', 'west')
+   * @param tileId - ID of the tile to add as border
+   */
+  addBorder(direction: keyof TileBorders, tileId: string): void {
+    this.borders[direction].add(tileId);
+  }
+
+  /**
+   * Removes a border tile ID from a specific direction
+   * @param direction - Direction to remove border from ('north', 'east', 'south', 'west')
+   * @param tileId - ID of the tile to remove from borders
+   */
+  removeBorder(direction: keyof TileBorders, tileId: string): void {
+    this.borders[direction].delete(tileId);
+  }
+
+  /**
+   * Gets the total number of unique bordering tiles (no duplicates)
+   * @returns Number of unique bordering tiles
+   */
+  getUniqueBorderCount(): number {
+    const allIds = new Set<string>();
+    this.borders.north.forEach((id) => allIds.add(id));
+    this.borders.east.forEach((id) => allIds.add(id));
+    this.borders.south.forEach((id) => allIds.add(id));
+    this.borders.west.forEach((id) => allIds.add(id));
+    return allIds.size;
   }
 
   /**
