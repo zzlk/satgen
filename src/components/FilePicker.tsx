@@ -62,6 +62,10 @@ export default function FilePicker({
 
   const handleRemoveFile = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Clear the file input value so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     onFileRemove();
   };
 
