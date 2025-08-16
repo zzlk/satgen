@@ -98,7 +98,7 @@ export class TileCollection {
   }
 
   /**
-   * Synthesizes a new image by placing random tiles without overlap
+   * Synthesizes a new image by placing compatible tiles based on border information
    * @param targetWidth - Desired width in pixels (must be multiple of tile width)
    * @param targetHeight - Desired height in pixels (must be multiple of tile height)
    * @returns Promise that resolves with the synthesized image as data URL
@@ -142,12 +142,64 @@ export class TileCollection {
     // Fill with transparent background
     ctx.clearRect(0, 0, targetWidth, targetHeight);
 
-    // Place random tiles in each grid position
+    // 2D array to store placed tiles
+    const placedTiles: (Tile | null)[][] = Array(gridHeight)
+      .fill(null)
+      .map(() => Array(gridWidth).fill(null));
+
+    // Helper function to get compatible tiles for a position
+    const getCompatibleTiles = (gridX: number, gridY: number): Tile[] => {
+      const compatibleTiles: Tile[] = [];
+
+      for (const tile of this.tiles) {
+        let isCompatible = true;
+
+        // Check north neighbor (if exists)
+        if (gridY > 0 && placedTiles[gridY - 1][gridX]) {
+          const northTile = placedTiles[gridY - 1][gridX]!;
+          if (
+            !northTile.borders.south.has(tile.id) &&
+            !tile.borders.north.has(northTile.id)
+          ) {
+            isCompatible = false;
+          }
+        }
+
+        // Check west neighbor (if exists)
+        if (gridX > 0 && placedTiles[gridY][gridX - 1]) {
+          const westTile = placedTiles[gridY][gridX - 1]!;
+          if (
+            !westTile.borders.east.has(tile.id) &&
+            !tile.borders.west.has(westTile.id)
+          ) {
+            isCompatible = false;
+          }
+        }
+
+        if (isCompatible) {
+          compatibleTiles.push(tile);
+        }
+      }
+
+      return compatibleTiles;
+    };
+
+    // Place tiles with border compatibility
     for (let gridY = 0; gridY < gridHeight; gridY++) {
       for (let gridX = 0; gridX < gridWidth; gridX++) {
-        // Pick a random tile
-        const randomIndex = Math.floor(Math.random() * this.tiles.length);
-        const selectedTile = this.tiles[randomIndex];
+        // Get compatible tiles for this position
+        const compatibleTiles = getCompatibleTiles(gridX, gridY);
+
+        // If no compatible tiles found, use any tile (fallback)
+        const availableTiles =
+          compatibleTiles.length > 0 ? compatibleTiles : this.tiles;
+
+        // Pick a random tile from compatible ones
+        const randomIndex = Math.floor(Math.random() * availableTiles.length);
+        const selectedTile = availableTiles[randomIndex];
+
+        // Store the selected tile
+        placedTiles[gridY][gridX] = selectedTile;
 
         // Calculate position in the target image
         const targetX = gridX * tileWidth;
