@@ -453,36 +453,23 @@ export class TileCollection {
     }
   ): void {
     // Check if north border can connect to south border (tile above itself)
+    // This means the tile's north edge can connect to another instance of the same tile's south edge
     if (this.areBordersCompatible(borders.north, borders.south)) {
       (tile as any).borders.north.add(tile.id);
       (tile as any).borders.south.add(tile.id);
     }
 
     // Check if east border can connect to west border (tile to the right of itself)
+    // This means the tile's east edge can connect to another instance of the same tile's west edge
     if (this.areBordersCompatible(borders.east, borders.west)) {
       (tile as any).borders.east.add(tile.id);
       (tile as any).borders.west.add(tile.id);
     }
 
-    // Check if north border can connect to north border (tile above itself, rotated)
-    if (this.areBordersCompatible(borders.north, borders.north)) {
-      (tile as any).borders.north.add(tile.id);
-    }
-
-    // Check if south border can connect to south border (tile below itself, rotated)
-    if (this.areBordersCompatible(borders.south, borders.south)) {
-      (tile as any).borders.south.add(tile.id);
-    }
-
-    // Check if east border can connect to east border (tile to the right of itself, rotated)
-    if (this.areBordersCompatible(borders.east, borders.east)) {
-      (tile as any).borders.east.add(tile.id);
-    }
-
-    // Check if west border can connect to west border (tile to the left of itself, rotated)
-    if (this.areBordersCompatible(borders.west, borders.west)) {
-      (tile as any).borders.west.add(tile.id);
-    }
+    // Note: We don't check same-direction borders (north-to-north, east-to-east, etc.)
+    // because those would require the tile to be rotated, which we're not supporting
+    // in this implementation. Same-direction borders should only be compatible if
+    // the tile has uniform borders in that direction.
   }
 
   /**
