@@ -1,0 +1,213 @@
+.image-tile-cutter-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.image-tile-cutter-title {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+}
+
+.upload-area {
+  border: 2px dashed #ddd;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  background-color: #fafafa;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.upload-area.drag-over {
+  border-color: #4caf50;
+  background-color: #f0f8f0;
+}
+
+.upload-area input[type="file"] {
+  display: none;
+}
+
+.upload-icon {
+  font-size: 48px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.upload-title {
+  margin: 0 0 8px 0;
+  color: #333;
+}
+
+.upload-subtitle {
+  margin: 0 0 20px 0;
+  color: #666;
+}
+
+.upload-formats {
+  font-size: 14px;
+  color: #999;
+}
+
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.file-info {
+  text-align: center;
+}
+
+.file-name {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+  color: #333;
+}
+
+.file-size {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.remove-button {
+  background: #ff4757;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.success-message {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #e8f5e8;
+  border-radius: 8px;
+  border: 1px solid #4caf50;
+}
+
+.success-title {
+  margin: 0 0 8px 0;
+  color: #2e7d32;
+}
+
+.success-text {
+  margin: 0;
+  font-size: 14px;
+  color: #388e3c;
+}
+
+.tile-config {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.tile-config-title {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.tile-inputs {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.dimension-input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 120px;
+}
+
+.cut-button {
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 20px;
+}
+
+.cut-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.tiles-section {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.tiles-title {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.tile-item {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  background-color: white;
+  text-align: center;
+}
+
+.tile-image {
+  width: 100%;
+  height: auto;
+  max-width: 100px;
+  max-height: 100px;
+  object-fit: contain;
+}
+
+.tile-label {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #666;
+}
