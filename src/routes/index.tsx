@@ -3,13 +3,14 @@ import "../styles/ImageTileCutter.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
 import { processImageIntoTiles } from "../utils/imageProcessor";
+import { Tile } from "../utils/Tile";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [tileWidth, setTileWidth] = useState<number>(64);
   const [tileHeight, setTileHeight] = useState<number>(64);
-  const [tiles, setTiles] = useState<string[]>([]);
+  const [tiles, setTiles] = useState<Tile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleFileSelect = useCallback((file: File) => {

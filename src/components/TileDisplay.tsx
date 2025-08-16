@@ -1,5 +1,7 @@
+import { Tile } from "../utils/Tile";
+
 interface TileDisplayProps {
-  tiles: string[];
+  tiles: Tile[];
 }
 
 export default function TileDisplay({ tiles }: TileDisplayProps) {
@@ -7,15 +9,26 @@ export default function TileDisplay({ tiles }: TileDisplayProps) {
     return null;
   }
 
+  // Calculate tilesX for proper tile numbering
+  const tilesX = tiles.length > 0 ? Math.max(...tiles.map((t) => t.x)) + 1 : 0;
+
   return (
     <div className="tiles-section">
       <h3 className="tiles-title">Generated Tiles ({tiles.length} total)</h3>
 
       <div className="tiles-grid">
-        {tiles.map((tile, index) => (
-          <div key={index} className="tile-item">
-            <img src={tile} alt={`Tile ${index + 1}`} className="tile-image" />
-            <p className="tile-label">Tile {index + 1}</p>
+        {tiles.map((tile) => (
+          <div key={tile.id} className="tile-item">
+            <img
+              src={tile.dataUrl}
+              alt={tile.getLabel(tilesX)}
+              className="tile-image"
+            />
+            <p className="tile-label">{tile.getLabel(tilesX)}</p>
+            <p className="tile-borders">
+              Borders: {tile.getBorderCount()} (
+              {tile.getAllBorderIds().join(", ")})
+            </p>
           </div>
         ))}
       </div>

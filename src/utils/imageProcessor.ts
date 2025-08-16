@@ -1,3 +1,5 @@
+import { Tile } from "./Tile";
+
 export interface TileDimensions {
   width: number;
   height: number;
@@ -11,7 +13,7 @@ export interface ProcessImageOptions {
 }
 
 export interface ProcessImageResult {
-  tiles: string[];
+  tiles: Tile[];
   totalTiles: number;
   imageWidth: number;
   imageHeight: number;
@@ -49,7 +51,7 @@ export function processImageIntoTiles(
         const tilesY = Math.ceil(imageHeight / tileHeight);
         const totalTiles = tilesX * tilesY;
 
-        const tiles: string[] = [];
+        const tiles: Tile[] = [];
         let processedTiles = 0;
 
         for (let y = 0; y < tilesY; y++) {
@@ -84,9 +86,18 @@ export function processImageIntoTiles(
               actualTileHeight
             );
 
-            // Convert to data URL
+            // Convert to data URL and create Tile object
             const tileDataUrl = canvas.toDataURL("image/png");
-            tiles.push(tileDataUrl);
+            const tile = Tile.create(
+              tileDataUrl,
+              x,
+              y,
+              actualTileWidth,
+              actualTileHeight,
+              tilesX,
+              tilesY
+            );
+            tiles.push(tile);
 
             processedTiles++;
 
