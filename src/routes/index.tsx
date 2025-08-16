@@ -14,6 +14,7 @@ export default function () {
   const [tileCollection, setTileCollection] = useState<TileCollection | null>(
     null
   );
+  const [enhancedTiles, setEnhancedTiles] = useState<Tile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [synthesizeWidth, setSynthesizeWidth] = useState<number>(10);
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
@@ -58,7 +59,7 @@ export default function () {
   };
 
   const handleSynthesize = async () => {
-    if (!tileCollection) {
+    if (enhancedTiles.length === 0) {
       alert("Please process an image into tiles first.");
       return;
     }
@@ -70,7 +71,20 @@ export default function () {
       const targetWidth = synthesizeWidth * tileWidth;
       const targetHeight = synthesizeHeight * tileHeight;
 
-      const result = await tileCollection.synthesize(targetWidth, targetHeight);
+      // Create a TileCollection from enhanced tiles for synthesis
+      const synthesisCollection = TileCollection.fromTiles(
+        enhancedTiles,
+        enhancedTiles.length,
+        targetWidth,
+        targetHeight,
+        Math.max(...enhancedTiles.map((t) => t.x)) + 1,
+        Math.max(...enhancedTiles.map((t) => t.y)) + 1
+      );
+
+      const result = await synthesisCollection.synthesize(
+        targetWidth,
+        targetHeight
+      );
       setSynthesizedImage(result);
     } catch (error) {
       console.error("Error synthesizing image:", error);
@@ -147,7 +161,10 @@ export default function () {
         </>
       )}
 
-      <TileDisplay tiles={tileCollection?.tiles || []} />
+      <TileDisplay
+        tiles={tileCollection?.tiles || []}
+        onEnhancedTilesChange={setEnhancedTiles}
+      />
 
       {tileCollection && (
         <div className="synthesis-section">

@@ -235,6 +235,15 @@
   color: #1976d2;
 }
 
+.enhancement-info {
+  margin: 8px 0 16px 0;
+  padding: 8px 12px;
+  background-color: #e8f5e8;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #2e7d32;
+}
+
 .synthesis-section {
   margin-top: 20px;
   padding: 20px;
