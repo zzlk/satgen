@@ -274,6 +274,9 @@ export class TileCollection {
       // Get pixel borders for tile1
       const tile1Borders = await this.getPixelBorders(tile1);
 
+      // Check self-compatibility (tile can border itself)
+      this.checkAndAddSelfCompatibility(tile1, tile1Borders);
+
       for (let j = i + 1; j < enhancedTiles.length; j++) {
         const tile2 = enhancedTiles[j];
 
@@ -432,6 +435,53 @@ export class TileCollection {
     if (this.areBordersCompatible(borders1.west, borders2.east)) {
       (tile1 as any).borders.west.add(tile2.id);
       (tile2 as any).borders.east.add(tile1.id);
+    }
+  }
+
+  /**
+   * Checks if a tile can border itself and adds self-references to border sets
+   * @param tile - The tile to check for self-compatibility
+   * @param borders - Pixel borders of the tile
+   */
+  private checkAndAddSelfCompatibility(
+    tile: Tile,
+    borders: {
+      north: Uint8ClampedArray;
+      east: Uint8ClampedArray;
+      south: Uint8ClampedArray;
+      west: Uint8ClampedArray;
+    }
+  ): void {
+    // Check if north border can connect to south border (tile above itself)
+    if (this.areBordersCompatible(borders.north, borders.south)) {
+      (tile as any).borders.north.add(tile.id);
+      (tile as any).borders.south.add(tile.id);
+    }
+
+    // Check if east border can connect to west border (tile to the right of itself)
+    if (this.areBordersCompatible(borders.east, borders.west)) {
+      (tile as any).borders.east.add(tile.id);
+      (tile as any).borders.west.add(tile.id);
+    }
+
+    // Check if north border can connect to north border (tile above itself, rotated)
+    if (this.areBordersCompatible(borders.north, borders.north)) {
+      (tile as any).borders.north.add(tile.id);
+    }
+
+    // Check if south border can connect to south border (tile below itself, rotated)
+    if (this.areBordersCompatible(borders.south, borders.south)) {
+      (tile as any).borders.south.add(tile.id);
+    }
+
+    // Check if east border can connect to east border (tile to the right of itself, rotated)
+    if (this.areBordersCompatible(borders.east, borders.east)) {
+      (tile as any).borders.east.add(tile.id);
+    }
+
+    // Check if west border can connect to west border (tile to the left of itself, rotated)
+    if (this.areBordersCompatible(borders.west, borders.west)) {
+      (tile as any).borders.west.add(tile.id);
     }
   }
 
