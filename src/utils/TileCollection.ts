@@ -98,6 +98,99 @@ export class TileCollection {
   }
 
   /**
+   * Synthesizes a new image by placing random tiles without overlap
+   * @param targetWidth - Desired width in pixels (must be multiple of tile width)
+   * @param targetHeight - Desired height in pixels (must be multiple of tile height)
+   * @returns Promise that resolves with the synthesized image as data URL
+   */
+  async synthesize(targetWidth: number, targetHeight: number): Promise<string> {
+    if (this.tiles.length === 0) {
+      throw new Error("No tiles available for synthesis");
+    }
+
+    // Get tile dimensions from the first tile
+    const tileWidth = this.tiles[0].width;
+    const tileHeight = this.tiles[0].height;
+
+    // Validate target dimensions are multiples of tile dimensions
+    if (targetWidth % tileWidth !== 0) {
+      throw new Error(
+        `Target width ${targetWidth} must be a multiple of tile width ${tileWidth}`
+      );
+    }
+    if (targetHeight % tileHeight !== 0) {
+      throw new Error(
+        `Target height ${targetHeight} must be a multiple of tile height ${tileHeight}`
+      );
+    }
+
+    // Calculate grid dimensions
+    const gridWidth = targetWidth / tileWidth;
+    const gridHeight = targetHeight / tileHeight;
+
+    // Create canvas for the synthesized image
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    // Fill with transparent background
+    ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+    // Place random tiles in each grid position
+    for (let gridY = 0; gridY < gridHeight; gridY++) {
+      for (let gridX = 0; gridX < gridWidth; gridX++) {
+        // Pick a random tile
+        const randomIndex = Math.floor(Math.random() * this.tiles.length);
+        const selectedTile = this.tiles[randomIndex];
+
+        // Calculate position in the target image
+        const targetX = gridX * tileWidth;
+        const targetY = gridY * tileHeight;
+
+        // Create a temporary canvas to load the tile image
+        const tileCanvas = document.createElement("canvas");
+        const tileCtx = tileCanvas.getContext("2d");
+
+        if (tileCtx) {
+          const tileImg = new Image();
+
+          await new Promise<void>((resolve, reject) => {
+            tileImg.onload = () => {
+              tileCanvas.width = tileWidth;
+              tileCanvas.height = tileHeight;
+
+              // Draw the tile to the temporary canvas
+              tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
+
+              // Draw the tile to the target canvas
+              ctx.drawImage(tileCanvas, targetX, targetY);
+
+              resolve();
+            };
+
+            tileImg.onerror = () => {
+              reject(
+                new Error(`Failed to load tile image: ${selectedTile.id}`)
+              );
+            };
+
+            tileImg.src = selectedTile.dataUrl;
+          });
+        }
+      }
+    }
+
+    // Return the synthesized image as data URL
+    return canvas.toDataURL("image/png");
+  }
+
+  /**
    * Merges duplicate tiles by hash, keeping the one closest to origin
    * @returns New TileCollection with merged duplicates
    */
