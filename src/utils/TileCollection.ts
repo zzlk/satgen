@@ -359,4 +359,248 @@ export class TileCollection {
       this.tilesY
     );
   }
+
+  /**
+   * Analyzes pixel borders to find compatible tiles and adds them to border sets
+   * @returns New TileCollection with enhanced border information
+   */
+  async addCompatibleBorders(): Promise<TileCollection> {
+    if (this.tiles.length === 0) {
+      return this;
+    }
+
+    // Create deep copies of tiles with enhanced borders
+    const enhancedTiles: Tile[] = [];
+
+    for (const tile of this.tiles) {
+      // Create a new tile with the same properties
+      const enhancedTile = new Tile(
+        tile.dataUrl,
+        tile.x,
+        tile.y,
+        tile.width,
+        tile.height,
+        this.tilesX,
+        this.tilesY
+      );
+
+      // Copy existing borders
+      (enhancedTile as any).borders = {
+        north: new Set(tile.borders.north),
+        east: new Set(tile.borders.east),
+        south: new Set(tile.borders.south),
+        west: new Set(tile.borders.west),
+      };
+
+      enhancedTiles.push(enhancedTile);
+    }
+
+    // Analyze pixel borders for each tile
+    for (let i = 0; i < enhancedTiles.length; i++) {
+      const tile1 = enhancedTiles[i];
+
+      // Get pixel borders for tile1
+      const tile1Borders = await this.getPixelBorders(tile1);
+
+      for (let j = i + 1; j < enhancedTiles.length; j++) {
+        const tile2 = enhancedTiles[j];
+
+        // Get pixel borders for tile2
+        const tile2Borders = await this.getPixelBorders(tile2);
+
+        // Check compatibility in all directions
+        this.checkAndAddCompatibility(tile1, tile2, tile1Borders, tile2Borders);
+      }
+    }
+
+    return new TileCollection(
+      enhancedTiles,
+      enhancedTiles.length,
+      this.imageWidth,
+      this.imageHeight,
+      this.tilesX,
+      this.tilesY
+    );
+  }
+
+  /**
+   * Gets the pixel borders of a tile
+   * @param tile - The tile to analyze
+   * @returns Object with pixel border data
+   */
+  private async getPixelBorders(tile: Tile): Promise<{
+    north: Uint8ClampedArray;
+    east: Uint8ClampedArray;
+    south: Uint8ClampedArray;
+    west: Uint8ClampedArray;
+  }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          resolve({
+            north: new Uint8ClampedArray(),
+            east: new Uint8ClampedArray(),
+            south: new Uint8ClampedArray(),
+            west: new Uint8ClampedArray(),
+          });
+          return;
+        }
+
+        canvas.width = tile.width;
+        canvas.height = tile.height;
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, tile.width, tile.height);
+        const data = imageData.data;
+
+        // Extract border pixels
+        const north: Uint8ClampedArray = new Uint8ClampedArray(tile.width * 4);
+        const east: Uint8ClampedArray = new Uint8ClampedArray(tile.height * 4);
+        const south: Uint8ClampedArray = new Uint8ClampedArray(tile.width * 4);
+        const west: Uint8ClampedArray = new Uint8ClampedArray(tile.height * 4);
+
+        // North border (top row)
+        for (let x = 0; x < tile.width; x++) {
+          const index = (x + 0 * tile.width) * 4;
+          north[x * 4] = data[index]; // R
+          north[x * 4 + 1] = data[index + 1]; // G
+          north[x * 4 + 2] = data[index + 2]; // B
+          north[x * 4 + 3] = data[index + 3]; // A
+        }
+
+        // East border (right column)
+        for (let y = 0; y < tile.height; y++) {
+          const index = (tile.width - 1 + y * tile.width) * 4;
+          east[y * 4] = data[index]; // R
+          east[y * 4 + 1] = data[index + 1]; // G
+          east[y * 4 + 2] = data[index + 2]; // B
+          east[y * 4 + 3] = data[index + 3]; // A
+        }
+
+        // South border (bottom row)
+        for (let x = 0; x < tile.width; x++) {
+          const index = (x + (tile.height - 1) * tile.width) * 4;
+          south[x * 4] = data[index]; // R
+          south[x * 4 + 1] = data[index + 1]; // G
+          south[x * 4 + 2] = data[index + 2]; // B
+          south[x * 4 + 3] = data[index + 3]; // A
+        }
+
+        // West border (left column)
+        for (let y = 0; y < tile.height; y++) {
+          const index = (0 + y * tile.width) * 4;
+          west[y * 4] = data[index]; // R
+          west[y * 4 + 1] = data[index + 1]; // G
+          west[y * 4 + 2] = data[index + 2]; // B
+          west[y * 4 + 3] = data[index + 3]; // A
+        }
+
+        resolve({ north, east, south, west });
+      };
+
+      img.onerror = () => {
+        resolve({
+          north: new Uint8ClampedArray(),
+          east: new Uint8ClampedArray(),
+          south: new Uint8ClampedArray(),
+          west: new Uint8ClampedArray(),
+        });
+      };
+
+      img.src = tile.dataUrl;
+    });
+  }
+
+  /**
+   * Checks if two pixel borders are compatible and adds them to border sets
+   * @param tile1 - First tile
+   * @param tile2 - Second tile
+   * @param borders1 - Pixel borders of first tile
+   * @param borders2 - Pixel borders of second tile
+   */
+  private checkAndAddCompatibility(
+    tile1: Tile,
+    tile2: Tile,
+    borders1: {
+      north: Uint8ClampedArray;
+      east: Uint8ClampedArray;
+      south: Uint8ClampedArray;
+      west: Uint8ClampedArray;
+    },
+    borders2: {
+      north: Uint8ClampedArray;
+      east: Uint8ClampedArray;
+      south: Uint8ClampedArray;
+      west: Uint8ClampedArray;
+    }
+  ): void {
+    // Check tile1's north with tile2's south
+    if (this.areBordersCompatible(borders1.north, borders2.south)) {
+      (tile1 as any).borders.north.add(tile2.id);
+      (tile2 as any).borders.south.add(tile1.id);
+    }
+
+    // Check tile1's east with tile2's west
+    if (this.areBordersCompatible(borders1.east, borders2.west)) {
+      (tile1 as any).borders.east.add(tile2.id);
+      (tile2 as any).borders.west.add(tile1.id);
+    }
+
+    // Check tile1's south with tile2's north
+    if (this.areBordersCompatible(borders1.south, borders2.north)) {
+      (tile1 as any).borders.south.add(tile2.id);
+      (tile2 as any).borders.north.add(tile1.id);
+    }
+
+    // Check tile1's west with tile2's east
+    if (this.areBordersCompatible(borders1.west, borders2.east)) {
+      (tile1 as any).borders.west.add(tile2.id);
+      (tile2 as any).borders.east.add(tile1.id);
+    }
+  }
+
+  /**
+   * Checks if two pixel borders are compatible
+   * @param border1 - First border pixel data
+   * @param border2 - Second border pixel data
+   * @returns True if borders are compatible
+   */
+  private areBordersCompatible(
+    border1: Uint8ClampedArray,
+    border2: Uint8ClampedArray
+  ): boolean {
+    if (border1.length !== border2.length) {
+      return false;
+    }
+
+    // Check if all pixels match (allowing for small tolerance)
+    const tolerance = 5; // Allow small color variations
+
+    for (let i = 0; i < border1.length; i += 4) {
+      const r1 = border1[i];
+      const g1 = border1[i + 1];
+      const b1 = border1[i + 2];
+      const a1 = border1[i + 3];
+
+      const r2 = border2[i];
+      const g2 = border2[i + 1];
+      const b2 = border2[i + 2];
+      const a2 = border2[i + 3];
+
+      if (
+        Math.abs(r1 - r2) > tolerance ||
+        Math.abs(g1 - g2) > tolerance ||
+        Math.abs(b1 - b2) > tolerance ||
+        Math.abs(a1 - a2) > tolerance
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 }
