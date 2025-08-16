@@ -15,6 +15,10 @@ export default function () {
     null
   );
   const [isProcessing, setIsProcessing] = useState(false);
+  const [synthesizeWidth, setSynthesizeWidth] = useState<number>(10);
+  const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
+  const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -50,6 +54,33 @@ export default function () {
       alert("Error processing image. Please try again.");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleSynthesize = async () => {
+    if (!tileCollection) {
+      alert("Please process an image into tiles first.");
+      return;
+    }
+
+    setIsSynthesizing(true);
+    setSynthesizedImage(null);
+
+    try {
+      const targetWidth = synthesizeWidth * tileWidth;
+      const targetHeight = synthesizeHeight * tileHeight;
+
+      const result = await tileCollection.synthesize(targetWidth, targetHeight);
+      setSynthesizedImage(result);
+    } catch (error) {
+      console.error("Error synthesizing image:", error);
+      alert(
+        `Error synthesizing image: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsSynthesizing(false);
     }
   };
 
@@ -117,6 +148,82 @@ export default function () {
       )}
 
       <TileDisplay tiles={tileCollection?.tiles || []} />
+
+      {tileCollection && (
+        <div className="synthesis-section">
+          <h3 className="synthesis-title">Image Synthesis</h3>
+          <p className="synthesis-description">
+            Create a new image by combining tiles randomly. Enter dimensions in
+            tile units.
+          </p>
+
+          <div className="synthesis-inputs">
+            <div className="input-group">
+              <label className="input-label">Width (tiles)</label>
+              <input
+                type="number"
+                value={synthesizeWidth}
+                onChange={(e) =>
+                  setSynthesizeWidth(Math.max(1, parseInt(e.target.value) || 1))
+                }
+                min="1"
+                className="dimension-input"
+              />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Height (tiles)</label>
+              <input
+                type="number"
+                value={synthesizeHeight}
+                onChange={(e) =>
+                  setSynthesizeHeight(
+                    Math.max(1, parseInt(e.target.value) || 1)
+                  )
+                }
+                min="1"
+                className="dimension-input"
+              />
+            </div>
+
+            <button
+              onClick={handleSynthesize}
+              disabled={isSynthesizing}
+              className="synthesize-button"
+            >
+              {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
+            </button>
+          </div>
+
+          {synthesizedImage && (
+            <div className="synthesized-result">
+              <h4 className="result-title">Synthesized Image</h4>
+              <p className="result-info">
+                Size: {synthesizeWidth * tileWidth} ×{" "}
+                {synthesizeHeight * tileHeight} pixels
+              </p>
+              <div className="synthesized-image-container">
+                <img
+                  src={synthesizedImage}
+                  alt="Synthesized Image"
+                  className="synthesized-image"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.download = "synthesized-image.png";
+                  link.href = synthesizedImage;
+                  link.click();
+                }}
+                className="download-button"
+              >
+                Download Image
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
