@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
 import "../styles/ImageTileCutter.css";
 import FilePicker from "../components/FilePicker";
+import TileDisplay from "../components/TileDisplay";
+import { processImageIntoTiles } from "../utils/imageProcessor";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -26,74 +28,25 @@ export default function () {
     setTiles([]);
   }, [previewUrl]);
 
-  const cutImageIntoTiles = () => {
+  const cutImageIntoTiles = async () => {
     if (!previewUrl) return;
 
     setIsProcessing(true);
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
+    try {
+      const result = await processImageIntoTiles({
+        imageUrl: previewUrl,
+        tileWidth,
+        tileHeight,
+      });
 
-      if (!ctx) {
-        setIsProcessing(false);
-        return;
-      }
-
-      const imageWidth = img.width;
-      const imageHeight = img.height;
-
-      const tilesX = Math.ceil(imageWidth / tileWidth);
-      const tilesY = Math.ceil(imageHeight / tileHeight);
-
-      const newTiles: string[] = [];
-
-      for (let y = 0; y < tilesY; y++) {
-        for (let x = 0; x < tilesX; x++) {
-          canvas.width = tileWidth;
-          canvas.height = tileHeight;
-
-          // Clear canvas
-          ctx.clearRect(0, 0, tileWidth, tileHeight);
-
-          // Calculate source coordinates
-          const sourceX = x * tileWidth;
-          const sourceY = y * tileHeight;
-
-          // Calculate actual tile dimensions (handle edge cases)
-          const actualTileWidth = Math.min(tileWidth, imageWidth - sourceX);
-          const actualTileHeight = Math.min(tileHeight, imageHeight - sourceY);
-
-          // Draw the tile
-          ctx.drawImage(
-            img,
-            sourceX,
-            sourceY,
-            actualTileWidth,
-            actualTileHeight,
-            0,
-            0,
-            actualTileWidth,
-            actualTileHeight
-          );
-
-          // Convert to data URL
-          const tileDataUrl = canvas.toDataURL("image/png");
-          newTiles.push(tileDataUrl);
-        }
-      }
-
-      setTiles(newTiles);
+      setTiles(result.tiles);
+    } catch (error) {
+      console.error("Error processing image:", error);
+      alert("Error processing image. Please try again.");
+    } finally {
       setIsProcessing(false);
-    };
-
-    img.onerror = () => {
-      setIsProcessing(false);
-      alert("Error loading image");
-    };
-
-    img.src = previewUrl;
+    }
   };
 
   return (
@@ -159,26 +112,7 @@ export default function () {
         </>
       )}
 
-      {tiles.length > 0 && (
-        <div className="tiles-section">
-          <h3 className="tiles-title">
-            Generated Tiles ({tiles.length} total)
-          </h3>
-
-          <div className="tiles-grid">
-            {tiles.map((tile, index) => (
-              <div key={index} className="tile-item">
-                <img
-                  src={tile}
-                  alt={`Tile ${index + 1}`}
-                  className="tile-image"
-                />
-                <p className="tile-label">Tile {index + 1}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <TileDisplay tiles={tiles} />
     </div>
   );
 }
