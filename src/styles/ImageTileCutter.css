@@ -205,6 +205,8 @@
   max-height: 100px;
   object-fit: contain;
   image-rendering: pixelated;
+  border: 2px dashed #ff00ff;
+  border-radius: 2px;
 }
 
 .tile-label {
@@ -224,6 +226,30 @@
   margin: 2px 0 0 0;
   font-size: 10px;
   color: #999;
+}
+
+.tile-borders-detailed {
+  margin: 4px 0 0 0;
+  font-size: 9px;
+  color: #666;
+}
+
+.border-direction {
+  display: flex;
+  margin: 1px 0;
+  line-height: 1.2;
+}
+
+.border-label {
+  font-weight: 600;
+  color: #333;
+  min-width: 12px;
+  margin-right: 4px;
+}
+
+.border-ids {
+  color: #666;
+  word-break: break-all;
 }
 
 .merge-info {

@@ -136,10 +136,40 @@ export default function TileDisplay({
             />
             <p className="tile-label">{tile.getLabel()}</p>
             <p className="tile-hash">Hash: {tile.getDataUrlHash()}</p>
-            <p className="tile-borders">
-              Borders: {tile.getBorderCount()} (
-              {tile.getAllBorderIds().join(", ")})
-            </p>
+            <div className="tile-borders-detailed">
+              <div className="border-direction">
+                <span className="border-label">N:</span>
+                <span className="border-ids">
+                  {tile.getBorderIds("north").length > 0
+                    ? tile.getBorderIds("north").join(", ")
+                    : "none"}
+                </span>
+              </div>
+              <div className="border-direction">
+                <span className="border-label">E:</span>
+                <span className="border-ids">
+                  {tile.getBorderIds("east").length > 0
+                    ? tile.getBorderIds("east").join(", ")
+                    : "none"}
+                </span>
+              </div>
+              <div className="border-direction">
+                <span className="border-label">S:</span>
+                <span className="border-ids">
+                  {tile.getBorderIds("south").length > 0
+                    ? tile.getBorderIds("south").join(", ")
+                    : "none"}
+                </span>
+              </div>
+              <div className="border-direction">
+                <span className="border-label">W:</span>
+                <span className="border-ids">
+                  {tile.getBorderIds("west").length > 0
+                    ? tile.getBorderIds("west").join(", ")
+                    : "none"}
+                </span>
+              </div>
+            </div>
           </div>
         ))}
       </div>
