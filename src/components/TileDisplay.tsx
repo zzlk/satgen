@@ -25,6 +25,7 @@ export default function TileDisplay({ tiles }: TileDisplayProps) {
               className="tile-image"
             />
             <p className="tile-label">{tile.getLabel()}</p>
+            <p className="tile-hash">Hash: {tile.getDataUrlHash()}</p>
             <p className="tile-borders">
               Borders: {tile.getBorderCount()} (
               {tile.getAllBorderIds().join(", ")})
