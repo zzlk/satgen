@@ -363,15 +363,6 @@ export default function () {
                         possibilities
                       </p>
                     )}
-
-                    {synthesisProgress.propagationChanges &&
-                      synthesisProgress.propagationChanges.length > 0 && (
-                        <p>
-                          Propagation:{" "}
-                          {synthesisProgress.propagationChanges.length} cells
-                          updated
-                        </p>
-                      )}
                   </div>
                 )}
 
