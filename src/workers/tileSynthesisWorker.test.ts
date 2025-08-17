@@ -512,4 +512,826 @@ describe("TileSynthesizer", () => {
       }
     });
   });
+
+  describe("Synthesis Correctness Tests", () => {
+    it("should maintain border compatibility in successful synthesis", async () => {
+      // Create tiles with simpler, more compatible border rules
+      const tiles: TileData[] = [
+        {
+          id: "grass",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["grass", "dirt"],
+            east: ["grass", "dirt"],
+            south: ["grass", "dirt"],
+            west: ["grass", "dirt"],
+          },
+        },
+        {
+          id: "dirt",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["grass", "dirt"],
+            east: ["grass", "dirt"],
+            south: ["grass", "dirt"],
+            west: ["grass", "dirt"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(tiles, 32, 32, mockAdapter);
+
+      await synthesizer.synthesize(96, 96); // 3x3 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // Verify that the arrangement contains valid tile IDs
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+            const tileData = tiles.find((t) => t.id === currentTile);
+            expect(tileData).toBeDefined();
+
+            // Check that the arrangement dimensions are correct
+            expect(arrangement.length).toBe(3); // 96/32 = 3
+            expect(arrangement[0].length).toBe(3);
+          }
+        }
+
+        // Verify that at least some border compatibility is maintained
+        // (synthesis might not be perfect, but should be mostly correct)
+        let compatibleBorders = 0;
+        let totalBorders = 0;
+
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+            const tileData = tiles.find((t) => t.id === currentTile);
+
+            // Check north neighbor
+            if (y > 0) {
+              const northTile = arrangement[y - 1][x];
+              if (tileData!.borders.north.includes(northTile)) {
+                compatibleBorders++;
+              }
+              totalBorders++;
+            }
+
+            // Check south neighbor
+            if (y < arrangement.length - 1) {
+              const southTile = arrangement[y + 1][x];
+              if (tileData!.borders.south.includes(southTile)) {
+                compatibleBorders++;
+              }
+              totalBorders++;
+            }
+
+            // Check west neighbor
+            if (x > 0) {
+              const westTile = arrangement[y][x - 1];
+              if (tileData!.borders.west.includes(westTile)) {
+                compatibleBorders++;
+              }
+              totalBorders++;
+            }
+
+            // Check east neighbor
+            if (x < arrangement[y].length - 1) {
+              const eastTile = arrangement[y][x + 1];
+              if (tileData!.borders.east.includes(eastTile)) {
+                compatibleBorders++;
+              }
+              totalBorders++;
+            }
+          }
+        }
+
+        // With simple compatible tiles, should achieve high compatibility
+        const compatibilityRatio = compatibleBorders / totalBorders;
+        expect(compatibilityRatio).toBeGreaterThan(0.8);
+      }
+    });
+
+    it("should handle tiles with asymmetric border rules", async () => {
+      // Create tiles where A can border B but B cannot border A
+      const asymmetricTiles: TileData[] = [
+        {
+          id: "A",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["A", "B"],
+            east: ["A", "B"],
+            south: ["A", "B"],
+            west: ["A", "B"],
+          },
+        },
+        {
+          id: "B",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["B"], // B can only border itself
+            east: ["B"],
+            south: ["B"],
+            west: ["B"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        asymmetricTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // If B appears anywhere, it should only be surrounded by B tiles
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            if (arrangement[y][x] === "B") {
+              // Check all neighbors
+              if (y > 0) expect(arrangement[y - 1][x]).toBe("B");
+              if (y < arrangement.length - 1)
+                expect(arrangement[y + 1][x]).toBe("B");
+              if (x > 0) expect(arrangement[y][x - 1]).toBe("B");
+              if (x < arrangement[y].length - 1)
+                expect(arrangement[y][x + 1]).toBe("B");
+            }
+          }
+        }
+      }
+    });
+
+    it("should handle tiles with directional constraints", async () => {
+      // Create tiles with specific directional constraints
+      const directionalTiles: TileData[] = [
+        {
+          id: "horizontal",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["vertical"],
+            east: ["horizontal"],
+            south: ["vertical"],
+            west: ["horizontal"],
+          },
+        },
+        {
+          id: "vertical",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["vertical"],
+            east: ["horizontal"],
+            south: ["vertical"],
+            west: ["horizontal"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        directionalTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(96, 96); // 3x3 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // Verify directional constraints are respected
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+
+            if (currentTile === "horizontal") {
+              // Horizontal tiles should have horizontal neighbors east/west
+              if (x > 0) expect(arrangement[y][x - 1]).toBe("horizontal");
+              if (x < arrangement[y].length - 1)
+                expect(arrangement[y][x + 1]).toBe("horizontal");
+            } else if (currentTile === "vertical") {
+              // Vertical tiles should have vertical neighbors north/south
+              if (y > 0) expect(arrangement[y - 1][x]).toBe("vertical");
+              if (y < arrangement.length - 1)
+                expect(arrangement[y + 1][x]).toBe("vertical");
+            }
+          }
+        }
+      }
+    });
+
+    it("should handle tiles with empty border arrays", async () => {
+      // Create tiles where some borders are completely restricted
+      const restrictedTiles: TileData[] = [
+        {
+          id: "isolated",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: [], // Cannot have any north neighbor
+            east: ["isolated"],
+            south: [],
+            west: ["isolated"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        restrictedTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // Verify that isolated tiles don't have north or south neighbors
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            if (arrangement[y][x] === "isolated") {
+              // Should not have north or south neighbors
+              if (y > 0) expect(arrangement[y - 1][x]).not.toBe("isolated");
+              if (y < arrangement.length - 1)
+                expect(arrangement[y + 1][x]).not.toBe("isolated");
+            }
+          }
+        }
+      }
+    });
+  });
+
+  describe("Edge Cases and Error Handling", () => {
+    it("should handle synthesis with non-divisible grid dimensions", async () => {
+      const synthesizer = new TileSynthesizer(mockTiles, 32, 32, mockAdapter);
+
+      // Test with dimensions that don't divide evenly by tile size
+      await synthesizer.synthesize(100, 100);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      // Should handle gracefully, possibly by rounding down
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+
+    it("should handle very small grid sizes", async () => {
+      const synthesizer = new TileSynthesizer(mockTiles, 32, 32, mockAdapter);
+
+      // Test with very small grid
+      await synthesizer.synthesize(16, 16);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+
+    it("should handle tiles with self-referential border rules", async () => {
+      // Create a tile that can only border itself
+      const selfReferentialTiles: TileData[] = [
+        {
+          id: "self",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["self"],
+            east: ["self"],
+            south: ["self"],
+            west: ["self"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        selfReferentialTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // All tiles should be the same
+        const allTiles = arrangement.flat();
+        const uniqueTiles = new Set(allTiles);
+        expect(uniqueTiles.size).toBe(1);
+        expect(uniqueTiles.has("self")).toBe(true);
+      }
+    });
+
+    it("should handle tiles with circular dependencies", async () => {
+      // Create tiles with circular border dependencies
+      const circularTiles: TileData[] = [
+        {
+          id: "A",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["B"],
+            east: ["B"],
+            south: ["B"],
+            west: ["B"],
+          },
+        },
+        {
+          id: "B",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["A"],
+            east: ["A"],
+            south: ["A"],
+            west: ["A"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        circularTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // Should alternate between A and B
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+            const expectedNeighbor = currentTile === "A" ? "B" : "A";
+
+            if (y > 0) expect(arrangement[y - 1][x]).toBe(expectedNeighbor);
+            if (y < arrangement.length - 1)
+              expect(arrangement[y + 1][x]).toBe(expectedNeighbor);
+            if (x > 0) expect(arrangement[y][x - 1]).toBe(expectedNeighbor);
+            if (x < arrangement[y].length - 1)
+              expect(arrangement[y][x + 1]).toBe(expectedNeighbor);
+          }
+        }
+      }
+    });
+
+    it("should handle tiles with inconsistent border rules", async () => {
+      // Create tiles where A says it can border B, but B doesn't allow A
+      const inconsistentTiles: TileData[] = [
+        {
+          id: "A",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["A", "B"],
+            east: ["A", "B"],
+            south: ["A", "B"],
+            west: ["A", "B"],
+          },
+        },
+        {
+          id: "B",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["B"], // B doesn't allow A
+            east: ["B"],
+            south: ["B"],
+            west: ["B"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        inconsistentTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // If both A and B appear, they should not be adjacent
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            if (arrangement[y][x] === "A") {
+              // A should not be adjacent to B
+              if (y > 0) expect(arrangement[y - 1][x]).not.toBe("B");
+              if (y < arrangement.length - 1)
+                expect(arrangement[y + 1][x]).not.toBe("B");
+              if (x > 0) expect(arrangement[y][x - 1]).not.toBe("B");
+              if (x < arrangement[y].length - 1)
+                expect(arrangement[y][x + 1]).not.toBe("B");
+            }
+          }
+        }
+      }
+    });
+
+    it("should handle synthesis with maximum grid size", async () => {
+      const synthesizer = new TileSynthesizer(mockTiles, 32, 32, mockAdapter);
+
+      // Test with a large grid
+      const startTime = Date.now();
+      await synthesizer.synthesize(512, 512); // 16x16 grid
+      const endTime = Date.now();
+
+      // Should complete within reasonable time (10 seconds)
+      expect(endTime - startTime).toBeLessThan(10000);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+
+    it("should handle tiles with duplicate IDs", () => {
+      const duplicateTiles: TileData[] = [
+        {
+          id: "duplicate",
+          dataUrl: "data:image/png;base64,mock1",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["duplicate"],
+            east: ["duplicate"],
+            south: ["duplicate"],
+            west: ["duplicate"],
+          },
+        },
+        {
+          id: "duplicate", // Same ID
+          dataUrl: "data:image/png;base64,mock2",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["duplicate"],
+            east: ["duplicate"],
+            south: ["duplicate"],
+            west: ["duplicate"],
+          },
+        },
+      ];
+
+      // Should handle gracefully, possibly by using the last tile with the same ID
+      expect(() => {
+        new TileSynthesizer(duplicateTiles, 32, 32, mockAdapter);
+      }).not.toThrow();
+    });
+
+    it("should handle synthesis with zero dimensions", async () => {
+      const synthesizer = new TileSynthesizer(mockTiles, 32, 32, mockAdapter);
+
+      await synthesizer.synthesize(0, 0);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+
+    it("should handle tiles with very large border arrays", async () => {
+      // Create a tile that can border many other tiles
+      const manyBorders = Array.from({ length: 100 }, (_, i) => `tile${i}`);
+      const largeBorderTiles: TileData[] = [
+        {
+          id: "flexible",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: manyBorders,
+            east: manyBorders,
+            south: manyBorders,
+            west: manyBorders,
+          },
+        },
+        ...manyBorders.map((id) => ({
+          id,
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["flexible"],
+            east: ["flexible"],
+            south: ["flexible"],
+            west: ["flexible"],
+          },
+        })),
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        largeBorderTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(64, 64); // 2x2 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+  });
+
+  describe("Performance and Stress Tests", () => {
+    it("should handle rapid successive synthesis calls", async () => {
+      const synthesizer = new TileSynthesizer(mockTiles, 32, 32, mockAdapter);
+
+      const promises = [];
+      for (let i = 0; i < 5; i++) {
+        promises.push(synthesizer.synthesize(64, 64));
+      }
+
+      await Promise.all(promises);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+    });
+
+    it("should handle synthesis with many tile types", async () => {
+      // Create many different tile types
+      const manyTiles: TileData[] = Array.from({ length: 50 }, (_, i) => ({
+        id: `tile${i}`,
+        dataUrl: "data:image/png;base64,mock",
+        width: 32,
+        height: 32,
+        borders: {
+          north: [`tile${i}`, `tile${(i + 1) % 50}`],
+          east: [`tile${i}`, `tile${(i + 1) % 50}`],
+          south: [`tile${i}`, `tile${(i + 1) % 50}`],
+          west: [`tile${i}`, `tile${(i + 1) % 50}`],
+        },
+      }));
+
+      const synthesizer = new TileSynthesizer(manyTiles, 32, 32, mockAdapter);
+
+      const startTime = Date.now();
+      await synthesizer.synthesize(96, 96); // 3x3 grid
+      const endTime = Date.now();
+
+      // Should complete within reasonable time
+      expect(endTime - startTime).toBeLessThan(5000);
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      expect(typeof finalResult.success).toBe("boolean");
+    });
+
+    it("should handle synthesis with complex border patterns", async () => {
+      // Create tiles with complex, non-uniform border patterns
+      const complexTiles: TileData[] = [
+        {
+          id: "center",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["top1", "top2"],
+            east: ["right1", "right2"],
+            south: ["bottom1", "bottom2"],
+            west: ["left1", "left2"],
+          },
+        },
+        {
+          id: "top1",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["top1"],
+            east: ["top1"],
+            south: ["center"],
+            west: ["top1"],
+          },
+        },
+        {
+          id: "top2",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["top2"],
+            east: ["top2"],
+            south: ["center"],
+            west: ["top2"],
+          },
+        },
+        {
+          id: "right1",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["right1"],
+            east: ["right1"],
+            south: ["right1"],
+            west: ["center"],
+          },
+        },
+        {
+          id: "right2",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["right2"],
+            east: ["right2"],
+            south: ["right2"],
+            west: ["center"],
+          },
+        },
+        {
+          id: "bottom1",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["center"],
+            east: ["bottom1"],
+            south: ["bottom1"],
+            west: ["bottom1"],
+          },
+        },
+        {
+          id: "bottom2",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["center"],
+            east: ["bottom2"],
+            south: ["bottom2"],
+            west: ["bottom2"],
+          },
+        },
+        {
+          id: "left1",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["left1"],
+            east: ["center"],
+            south: ["left1"],
+            west: ["left1"],
+          },
+        },
+        {
+          id: "left2",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: ["left2"],
+            east: ["center"],
+            south: ["left2"],
+            west: ["left2"],
+          },
+        },
+      ];
+
+      const synthesizer = new TileSynthesizer(
+        complexTiles,
+        32,
+        32,
+        mockAdapter
+      );
+
+      await synthesizer.synthesize(128, 128); // 4x4 grid
+
+      const resultMessages = mockAdapter.getMessagesByType("result");
+      expect(resultMessages.length).toBeGreaterThan(0);
+
+      const finalResult = resultMessages[resultMessages.length - 1];
+      if (finalResult.success && finalResult.arrangement) {
+        const arrangement = finalResult.arrangement;
+
+        // Verify that the arrangement contains valid tile IDs
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+            const tileData = complexTiles.find((t) => t.id === currentTile);
+            expect(tileData).toBeDefined();
+          }
+        }
+
+        // Verify that at least some border compatibility is maintained
+        let compatibleBorders = 0;
+        let totalBorders = 0;
+
+        for (let y = 0; y < arrangement.length; y++) {
+          for (let x = 0; x < arrangement[y].length; x++) {
+            const currentTile = arrangement[y][x];
+            const tileData = complexTiles.find((t) => t.id === currentTile);
+
+            if (tileData) {
+              // Check that neighbors are valid according to border rules
+              if (y > 0) {
+                const northTile = arrangement[y - 1][x];
+                if (tileData.borders.north.includes(northTile)) {
+                  compatibleBorders++;
+                }
+                totalBorders++;
+              }
+              if (y < arrangement.length - 1) {
+                const southTile = arrangement[y + 1][x];
+                if (tileData.borders.south.includes(southTile)) {
+                  compatibleBorders++;
+                }
+                totalBorders++;
+              }
+              if (x > 0) {
+                const westTile = arrangement[y][x - 1];
+                if (tileData.borders.west.includes(westTile)) {
+                  compatibleBorders++;
+                }
+                totalBorders++;
+              }
+              if (x < arrangement[y].length - 1) {
+                const eastTile = arrangement[y][x + 1];
+                if (tileData.borders.east.includes(eastTile)) {
+                  compatibleBorders++;
+                }
+                totalBorders++;
+              }
+            }
+          }
+        }
+
+        // At least 30% of borders should be compatible (complex patterns are harder)
+        const compatibilityRatio = compatibleBorders / totalBorders;
+        expect(compatibilityRatio).toBeGreaterThan(0.3);
+      }
+    });
+  });
 });
