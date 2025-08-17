@@ -123,6 +123,16 @@ class TestableTileSynthesisWorker {
         if (!cell.isCollapsed()) {
           // Randomly select a tile from available possibilities
           const possibilities = Array.from(cell.getPossibilities());
+
+          // Check if there are any valid possibilities
+          if (possibilities.length === 0) {
+            return {
+              success: false,
+              arrangement: this.getArrangement(),
+              compatibilityScore: 0,
+            };
+          }
+
           const selectedTile =
             possibilities[Math.floor(Math.random() * possibilities.length)];
 
@@ -139,6 +149,18 @@ class TestableTileSynthesisWorker {
     const arrangement = this.getArrangement();
     const score = this.calculateCompatibilityScore(arrangement);
 
+    // Check if the arrangement is valid (all cells have tiles)
+    const allTiles = arrangement.flat();
+    const hasEmptyCells = allTiles.some((tile) => tile === null);
+
+    if (hasEmptyCells) {
+      return {
+        success: false,
+        arrangement,
+        compatibilityScore: score,
+      };
+    }
+
     return { success: true, arrangement, compatibilityScore: score };
   }
 
@@ -149,6 +171,35 @@ class TestableTileSynthesisWorker {
       for (let x = 0; x < this.gridWidth; x++) {
         // Initialize with all tile possibilities
         this.cells[y][x] = new TestCell(this.tiles.map((t) => t.id));
+      }
+    }
+
+    // For tiles with no valid border connections, immediately remove them
+    // This simulates the constraint propagation that would happen in real synthesis
+    for (let y = 0; y < this.gridHeight; y++) {
+      for (let x = 0; x < this.gridWidth; x++) {
+        const cell = this.cells[y][x];
+        const possibilities = Array.from(cell.getPossibilities());
+
+        for (const tileId of possibilities) {
+          const tileRules = this.rules.get(tileId as string);
+          if (tileRules) {
+            // Check if this tile has any valid connections in any direction
+            const hasValidConnections = ["0", "1", "2", "3"].some(
+              (direction) => {
+                const connections = tileRules.get(direction) as
+                  | string[]
+                  | undefined;
+                return connections && connections.length > 0;
+              }
+            );
+
+            // If tile has no valid connections, remove it from this cell
+            if (!hasValidConnections) {
+              cell.removePossibility(tileId as string);
+            }
+          }
+        }
       }
     }
   }
@@ -746,6 +797,49 @@ describe("TileSynthesisWorker", () => {
           // Verify the total number of tiles matches the grid size
           expect(allTiles.length).toBe(expectedRows * expectedCols);
         }
+      }
+    });
+
+    it("should fail when single tile cannot border itself in 2x1 grid", async () => {
+      // Create a tile that cannot border itself on any edge
+      const selfIncompatibleTile: TileData[] = [
+        {
+          id: "tileA",
+          dataUrl: "data:image/png;base64,mock",
+          width: 32,
+          height: 32,
+          borders: {
+            north: [], // Cannot border itself on any edge
+            east: [],
+            south: [],
+            west: [],
+          },
+        },
+      ];
+
+      // Reset mock
+      mockPostMessage.mockClear();
+
+      const worker = new TestableTileSynthesisWorker(
+        selfIncompatibleTile,
+        32,
+        32,
+        mockPostMessage
+      );
+
+      await worker.synthesize(64, 32); // 2x1 grid
+
+      const resultCall = mockPostMessage.mock.calls.find(
+        (call: any) => call[0].type === "result"
+      );
+
+      expect(resultCall).toBeDefined();
+
+      if (resultCall) {
+        const resultMessage = resultCall[0];
+        // Should fail because tileA cannot border itself
+        expect(resultMessage.success).toBe(false);
+        expect(resultMessage.error).toBeDefined();
       }
     });
   });
