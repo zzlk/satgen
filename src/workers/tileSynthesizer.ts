@@ -713,16 +713,16 @@ export class TileSynthesizer {
   ): Array<{ x: number; y: number; entropy: number }> {
     const entropies: Array<{ x: number; y: number; entropy: number }> = [];
 
-    // Calculate entropy based on both possibility count and support constraints
+    // Calculate entropy based on possibility count (most constrained first)
     for (let y = 0; y < this.gridHeight; y++) {
       for (let x = 0; x < this.gridWidth; x++) {
         const cell = this.cells[y][x];
         const possibilityCount = cell.getPossibilityCount();
         if (possibilityCount > 1) {
-          // Calculate entropy based on possibility count and support
+          // Primary factor: fewer possibilities = lower entropy (higher priority)
           let entropy = possibilityCount;
 
-          // Add penalty for cells with low support (more constrained)
+          // Secondary factor: consider support constraints
           let totalSupport = 0;
           let minSupport = Infinity;
           for (const tileId of cell.getPossibilities()) {
@@ -734,8 +734,10 @@ export class TileSynthesizer {
             minSupport = Math.min(minSupport, tileSupport);
           }
 
-          // Lower entropy (higher priority) for cells with fewer possibilities and higher support
-          entropy = possibilityCount * (1 + (4 - minSupport) * 0.5);
+          // Add small penalty for cells with very low support (more constrained)
+          // This is a secondary consideration - possibility count is primary
+          const supportPenalty = Math.max(0, (4 - minSupport) * 0.1);
+          entropy += supportPenalty;
 
           entropies.push({ x, y, entropy });
         }
@@ -746,10 +748,29 @@ export class TileSynthesizer {
       `📊 Found ${entropies.length} cells with multiple possibilities`
     );
 
-    // Sort by entropy (lowest first) and take the requested count
+    // Sort by entropy (lowest first) - this prioritizes cells with fewest possibilities
     entropies.sort((a, b) => a.entropy - b.entropy);
-    entropies.splice(count);
 
+    // Add randomness to cell selection: sometimes choose from a pool of most constrained cells
+    if (entropies.length > 0) {
+      const minEntropy = entropies[0].entropy;
+      const entropyThreshold = minEntropy * 1.2; // Tighter threshold for most constrained cells
+
+      // Find cells with entropy close to the minimum (most constrained)
+      const mostConstrainedCells = entropies.filter(
+        (cell) => cell.entropy <= entropyThreshold
+      );
+
+      if (mostConstrainedCells.length > 1) {
+        // Randomly shuffle the most constrained cells and take the requested count
+        this.shuffleArray(mostConstrainedCells);
+        mostConstrainedCells.splice(count);
+        return mostConstrainedCells;
+      }
+    }
+
+    // Fallback to deterministic selection if no suitable pool found
+    entropies.splice(count);
     return entropies;
   }
 
@@ -777,20 +798,65 @@ export class TileSynthesizer {
     // Sort by support score (highest first)
     tileScores.sort((a, b) => b.score - a.score);
 
-    // Keep the tile with the highest support (most compatible)
-    const bestTile = tileScores[0].tileId;
+    // Add randomness to tile selection while maintaining good support
+    const maxScore = tileScores[0].score;
+    const minAcceptableScore = Math.max(0, maxScore * 0.7); // Accept tiles with at least 70% of max support
+
+    // Filter tiles with acceptable support scores
+    const acceptableTiles = tileScores.filter(
+      (tile) => tile.score >= minAcceptableScore
+    );
+
+    let chosenTile: string;
+    if (acceptableTiles.length > 1) {
+      // Randomly choose from acceptable tiles, with bias towards higher scores
+      const weights = acceptableTiles.map((tile) => tile.score);
+      chosenTile = this.weightedRandomChoice(
+        acceptableTiles.map((t) => t.tileId),
+        weights
+      );
+    } else {
+      // Fallback to the best tile if no other acceptable options
+      chosenTile = tileScores[0].tileId;
+    }
 
     const toRemove = new Set<string>();
     for (const tileId of possibilities) {
-      if (tileId !== bestTile) {
+      if (tileId !== chosenTile) {
         toRemove.add(tileId);
       }
     }
 
+    const chosenScore =
+      tileScores.find((t) => t.tileId === chosenTile)?.score || 0;
     console.log(
-      `🎯 Selected tile ${bestTile} with support score ${tileScores[0].score} (removing ${toRemove.size} others)`
+      `🎲 Randomly selected tile ${chosenTile} with support score ${chosenScore} (removing ${toRemove.size} others)`
     );
-    return { chosenTile: bestTile, toRemove };
+    return { chosenTile, toRemove };
+  }
+
+  // Helper method to shuffle an array in place
+  private shuffleArray<T>(array: T[]): void {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  // Helper method for weighted random choice
+  private weightedRandomChoice<T>(items: T[], weights: number[]): T {
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (let i = 0; i < items.length; i++) {
+      random -= weights[i];
+      if (random <= 0) {
+        return items[i];
+      }
+    }
+
+    // Fallback to last item (shouldn't happen with proper weights)
+    return items[items.length - 1];
   }
 
   private propagateRemove(
