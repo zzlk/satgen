@@ -6,10 +6,29 @@ export interface SynthesisResult {
   dataUrl: string;
 }
 
+export interface SynthesisProgress {
+  iteration: number;
+  totalCollapsed: number;
+  totalCells: number;
+  collapsedCell?: {
+    x: number;
+    y: number;
+    tileId: string;
+    possibilities: number;
+  };
+  propagationChanges?: {
+    x: number;
+    y: number;
+    fromCount: number;
+    toCount: number;
+  }[];
+}
+
 export class TileSynthesizer {
   private tiles: Tile[];
   private tileWidth: number;
   private tileHeight: number;
+  private worker: Worker | null = null;
 
   constructor(tiles: Tile[]) {
     if (tiles.length === 0) {
@@ -21,14 +40,16 @@ export class TileSynthesizer {
   }
 
   /**
-   * Synthesizes a new image using the Wave Function Collapse algorithm
+   * Synthesizes a new image using the Wave Function Collapse algorithm in a web worker
    * @param targetWidth - Desired width in pixels (must be multiple of tile width)
    * @param targetHeight - Desired height in pixels (must be multiple of tile height)
+   * @param onProgress - Optional callback for progress updates
    * @returns Promise that resolves with the synthesis result
    */
   async synthesize(
     targetWidth: number,
-    targetHeight: number
+    targetHeight: number,
+    onProgress?: (progress: SynthesisProgress) => void
   ): Promise<SynthesisResult> {
     // Validate target dimensions are multiples of tile dimensions
     if (targetWidth % this.tileWidth !== 0) {
@@ -51,10 +72,21 @@ export class TileSynthesizer {
     );
 
     try {
-      const arrangement = await this.waveFunctionCollapse(
-        gridWidth,
-        gridHeight
+      // Create and start the web worker
+      this.worker = new Worker(
+        new URL("../workers/tileSynthesisWorker.ts", import.meta.url)
       );
+
+      // Set up message handling
+      const result = await this.runWorkerSynthesis(
+        targetWidth,
+        targetHeight,
+        onProgress
+      );
+
+      // Clean up worker
+      this.worker.terminate();
+      this.worker = null;
 
       // Create canvas and render the arrangement
       const canvas = document.createElement("canvas");
@@ -71,440 +103,166 @@ export class TileSynthesizer {
       // Render the arrangement
       for (let gridY = 0; gridY < gridHeight; gridY++) {
         for (let gridX = 0; gridX < gridWidth; gridX++) {
-          const tile = arrangement[gridY][gridX];
-          if (tile) {
-            const targetX = gridX * this.tileWidth;
-            const targetY = gridY * this.tileHeight;
+          const tileId = result.arrangement[gridY][gridX];
+          if (tileId) {
+            const tile = this.tiles.find((t) => t.id === tileId);
+            if (tile) {
+              const targetX = gridX * this.tileWidth;
+              const targetY = gridY * this.tileHeight;
 
-            const tileCanvas = document.createElement("canvas");
-            const tileCtx = tileCanvas.getContext("2d");
+              const tileCanvas = document.createElement("canvas");
+              const tileCtx = tileCanvas.getContext("2d");
 
-            if (tileCtx) {
-              const tileImg = new Image();
+              if (tileCtx) {
+                const tileImg = new Image();
 
-              await new Promise<void>((resolve, reject) => {
-                tileImg.onload = () => {
-                  tileCanvas.width = this.tileWidth;
-                  tileCanvas.height = this.tileHeight;
-                  tileCtx.drawImage(
-                    tileImg,
-                    0,
-                    0,
-                    this.tileWidth,
-                    this.tileHeight
-                  );
-                  ctx.drawImage(tileCanvas, targetX, targetY);
-                  resolve();
-                };
+                await new Promise<void>((resolve, reject) => {
+                  tileImg.onload = () => {
+                    tileCanvas.width = this.tileWidth;
+                    tileCanvas.height = this.tileHeight;
+                    tileCtx.drawImage(
+                      tileImg,
+                      0,
+                      0,
+                      this.tileWidth,
+                      this.tileHeight
+                    );
+                    ctx.drawImage(tileCanvas, targetX, targetY);
+                    resolve();
+                  };
 
-                tileImg.onerror = () => {
-                  reject(new Error(`Failed to load tile image: ${tile.id}`));
-                };
+                  tileImg.onerror = () => {
+                    reject(new Error(`Failed to load tile image: ${tile.id}`));
+                  };
 
-                tileImg.src = tile.dataUrl;
-              });
+                  tileImg.src = tile.dataUrl;
+                });
+              }
             }
           }
         }
       }
 
-      const finalScore = this.calculateCompatibilityScore(arrangement);
       const dataUrl = canvas.toDataURL("image/png");
 
       console.log(
-        `Synthesis completed successfully! Compatibility score: ${finalScore}`
+        `Synthesis completed successfully! Compatibility score: ${result.compatibilityScore}`
+      );
+
+      // Convert tile IDs back to Tile objects for the result
+      const tileArrangement: (Tile | null)[][] = result.arrangement.map((row) =>
+        row.map((tileId) =>
+          tileId ? this.tiles.find((t) => t.id === tileId) || null : null
+        )
       );
 
       return {
-        arrangement: arrangement,
-        compatibilityScore: finalScore,
+        arrangement: tileArrangement,
+        compatibilityScore: result.compatibilityScore,
         dataUrl: dataUrl,
       };
     } catch (error) {
+      // Clean up worker on error
+      if (this.worker) {
+        this.worker.terminate();
+        this.worker = null;
+      }
       console.error("Wave Function Collapse failed:", error);
       throw error;
     }
   }
 
   /**
-   * Implements the Wave Function Collapse algorithm
-   * @param gridWidth - Number of tiles in X direction
-   * @param gridHeight - Number of tiles in Y direction
-   * @returns Promise that resolves with the tile arrangement
+   * Runs the synthesis in the web worker and handles communication
+   * @param targetWidth - Target width in pixels
+   * @param targetHeight - Target height in pixels
+   * @param onProgress - Optional progress callback
+   * @returns Promise that resolves with the worker result
    */
-  private async waveFunctionCollapse(
-    gridWidth: number,
-    gridHeight: number
-  ): Promise<(Tile | null)[][]> {
-    console.log("Initializing Wave Function Collapse...");
-
-    // Initialize the wave function: each cell contains a set of all possible tiles
-    const waveFunction: Set<Tile>[][] = Array(gridHeight)
-      .fill(null)
-      .map(() =>
-        Array(gridWidth)
-          .fill(null)
-          .map(() => new Set(this.tiles))
-      );
-
-    // Final arrangement (will be filled as tiles are collapsed)
-    const arrangement: (Tile | null)[][] = Array(gridHeight)
-      .fill(null)
-      .map(() => Array(gridWidth).fill(null));
-
-    let iteration = 0;
-    const maxIterations = gridWidth * gridHeight * 10; // Safety limit
-
-    while (iteration < maxIterations) {
-      iteration++;
-      console.log(`\n--- Iteration ${iteration} ---`);
-
-      // Step 1: Propagate constraints
-      const propagationResult = this.propagateConstraints(
-        waveFunction,
-        arrangement
-      );
-      if (!propagationResult.success) {
-        console.error("Propagation failed - no valid arrangement possible");
-        throw new Error(
-          "Wave Function Collapse failed: conflicting constraints"
-        );
+  private runWorkerSynthesis(
+    targetWidth: number,
+    targetHeight: number,
+    onProgress?: (progress: SynthesisProgress) => void
+  ): Promise<{ arrangement: string[][]; compatibilityScore: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        reject(new Error("Worker not initialized"));
+        return;
       }
 
-      // Step 2: Collapse the most constrained cell
-      const collapseResult = this.collapseSmallest(waveFunction, arrangement);
-      if (!collapseResult.success) {
-        console.log("All cells collapsed - synthesis complete!");
-        break;
-      }
+      // Prepare tile data for the worker
+      const tileData = this.tiles.map((tile) => ({
+        id: tile.id,
+        dataUrl: tile.dataUrl,
+        width: tile.width,
+        height: tile.height,
+        borders: {
+          north: Array.from(tile.borders.north),
+          east: Array.from(tile.borders.east),
+          south: Array.from(tile.borders.south),
+          west: Array.from(tile.borders.west),
+        },
+      }));
 
-      // Check if we've completed the entire grid
-      let totalCollapsed = 0;
-      for (let y = 0; y < gridHeight; y++) {
-        for (let x = 0; x < gridWidth; x++) {
-          if (arrangement[y][x] !== null) {
-            totalCollapsed++;
-          }
-        }
-      }
+      // Set up message handler
+      this.worker.onmessage = (event) => {
+        const message = event.data;
 
-      console.log(
-        `Progress: ${totalCollapsed}/${gridWidth * gridHeight} cells collapsed`
-      );
-
-      if (totalCollapsed === gridWidth * gridHeight) {
-        console.log("All cells collapsed - synthesis complete!");
-        break;
-      }
-    }
-
-    if (iteration >= maxIterations) {
-      console.warn("Reached maximum iterations - synthesis may be incomplete");
-    }
-
-    return arrangement;
-  }
-
-  /**
-   * Propagates constraints throughout the wave function
-   * @param waveFunction - The wave function matrix
-   * @param arrangement - The current arrangement
-   * @returns Success status and whether any changes were made
-   */
-  private propagateConstraints(
-    waveFunction: Set<Tile>[][],
-    arrangement: (Tile | null)[][]
-  ): { success: boolean; changesMade: boolean } {
-    const gridHeight = waveFunction.length;
-    const gridWidth = waveFunction[0].length;
-    let changesMade = false;
-    let passCount = 0;
-    const maxPasses = gridWidth * gridHeight * 2; // Safety limit
-
-    console.log("Starting constraint propagation...");
-
-    let passChanges: boolean;
-    do {
-      passCount++;
-      passChanges = false;
-
-      for (let y = 0; y < gridHeight; y++) {
-        for (let x = 0; x < gridWidth; x++) {
-          // Skip already collapsed cells
-          if (arrangement[y][x] !== null) continue;
-
-          const currentPossibilities = waveFunction[y][x];
-          const originalSize = currentPossibilities.size;
-
-          // Get compatible tiles based on neighbors
-          const compatibleTiles = this.getCompatibleTilesForPosition(
-            x,
-            y,
-            waveFunction,
-            arrangement
-          );
-
-          // Remove incompatible tiles
-          const tilesToRemove: Tile[] = [];
-          for (const tile of currentPossibilities) {
-            if (!compatibleTiles.has(tile)) {
-              tilesToRemove.push(tile);
-            }
+        if (message.type === "progress") {
+          // Forward progress updates to the callback
+          if (onProgress) {
+            onProgress(message);
           }
 
-          for (const tile of tilesToRemove) {
-            currentPossibilities.delete(tile);
-          }
-
-          if (currentPossibilities.size !== originalSize) {
-            passChanges = true;
+          // Log progress to console
+          if (message.collapsedCell) {
             console.log(
-              `Cell (${x},${y}): reduced from ${originalSize} to ${currentPossibilities.size} possibilities`
+              `Collapsed cell (${message.collapsedCell.x},${message.collapsedCell.y}) with ${message.collapsedCell.possibilities} possibilities to tile: ${message.collapsedCell.tileId}`
             );
           }
 
-          // If no possibilities remain, propagation failed
-          if (currentPossibilities.size === 0) {
-            console.error(
-              `Cell (${x},${y}) has no valid possibilities - propagation failed`
+          if (
+            message.propagationChanges &&
+            message.propagationChanges.length > 0
+          ) {
+            console.log(
+              `Propagation: ${message.propagationChanges.length} cells updated`
             );
-            return { success: false, changesMade: changesMade };
           }
-        }
-      }
 
-      changesMade = changesMade || passChanges;
-
-      if (passChanges) {
-        console.log(
-          `Pass ${passCount}: changes made, continuing propagation...`
-        );
-      } else {
-        console.log(`Pass ${passCount}: no changes, propagation complete`);
-      }
-    } while (passChanges && passCount < maxPasses);
-
-    if (passCount >= maxPasses) {
-      console.warn("Reached maximum propagation passes");
-    }
-
-    return { success: true, changesMade: changesMade };
-  }
-
-  /**
-   * Collapses the cell with the fewest possibilities
-   * @param waveFunction - The wave function matrix
-   * @param arrangement - The current arrangement
-   * @returns Success status and collapse information
-   */
-  private collapseSmallest(
-    waveFunction: Set<Tile>[][],
-    arrangement: (Tile | null)[][]
-  ): { success: boolean; x?: number; y?: number; tile?: Tile } {
-    const gridHeight = waveFunction.length;
-    const gridWidth = waveFunction[0].length;
-
-    // Find the cell with the fewest possibilities
-    let minPossibilities = Infinity;
-    let collapseX = -1;
-    let collapseY = -1;
-
-    for (let y = 0; y < gridHeight; y++) {
-      for (let x = 0; x < gridWidth; x++) {
-        if (arrangement[y][x] !== null) continue; // Skip already collapsed cells
-
-        const possibilities = waveFunction[y][x].size;
-        if (possibilities < minPossibilities) {
-          minPossibilities = possibilities;
-          collapseX = x;
-          collapseY = y;
-        }
-      }
-    }
-
-    if (collapseX === -1 || collapseY === -1) {
-      console.log("No cells to collapse - all cells are already collapsed");
-      return { success: false };
-    }
-
-    // Randomly select a tile from the possibilities
-    const possibilities = Array.from(waveFunction[collapseY][collapseX]);
-    const selectedTile =
-      possibilities[Math.floor(Math.random() * possibilities.length)];
-
-    // Collapse the cell
-    arrangement[collapseY][collapseX] = selectedTile;
-    waveFunction[collapseY][collapseX].clear();
-    waveFunction[collapseY][collapseX].add(selectedTile);
-
-    console.log(
-      `Collapsed cell (${collapseX},${collapseY}) with ${minPossibilities} possibilities to tile: ${selectedTile.id}`
-    );
-
-    return {
-      success: true,
-      x: collapseX,
-      y: collapseY,
-      tile: selectedTile,
-    };
-  }
-
-  /**
-   * Gets compatible tiles for a specific position based on neighbors
-   * @param x - X coordinate
-   * @param y - Y coordinate
-   * @param waveFunction - The wave function matrix
-   * @param arrangement - The current arrangement
-   * @returns Set of compatible tiles
-   */
-  private getCompatibleTilesForPosition(
-    x: number,
-    y: number,
-    waveFunction: Set<Tile>[][],
-    arrangement: (Tile | null)[][]
-  ): Set<Tile> {
-    const gridHeight = waveFunction.length;
-    const gridWidth = waveFunction[0].length;
-    const compatibleTiles = new Set<Tile>();
-
-    // Start with all tiles
-    for (const tile of this.tiles) {
-      compatibleTiles.add(tile);
-    }
-
-    // Check north neighbor
-    if (y > 0 && arrangement[y - 1][x]) {
-      const northTile = arrangement[y - 1][x]!;
-      const northCompatible = new Set<Tile>();
-      for (const tile of compatibleTiles) {
-        if (
-          northTile.borders.south.has(tile.id) ||
-          tile.borders.north.has(northTile.id)
-        ) {
-          northCompatible.add(tile);
-        }
-      }
-      compatibleTiles.clear();
-      for (const tile of northCompatible) {
-        compatibleTiles.add(tile);
-      }
-    }
-
-    // Check south neighbor
-    if (y < gridHeight - 1 && arrangement[y + 1][x]) {
-      const southTile = arrangement[y + 1][x]!;
-      const southCompatible = new Set<Tile>();
-      for (const tile of compatibleTiles) {
-        if (
-          southTile.borders.north.has(tile.id) ||
-          tile.borders.south.has(southTile.id)
-        ) {
-          southCompatible.add(tile);
-        }
-      }
-      compatibleTiles.clear();
-      for (const tile of southCompatible) {
-        compatibleTiles.add(tile);
-      }
-    }
-
-    // Check west neighbor
-    if (x > 0 && arrangement[y][x - 1]) {
-      const westTile = arrangement[y][x - 1]!;
-      const westCompatible = new Set<Tile>();
-      for (const tile of compatibleTiles) {
-        if (
-          westTile.borders.east.has(tile.id) ||
-          tile.borders.west.has(westTile.id)
-        ) {
-          westCompatible.add(tile);
-        }
-      }
-      compatibleTiles.clear();
-      for (const tile of westCompatible) {
-        compatibleTiles.add(tile);
-      }
-    }
-
-    // Check east neighbor
-    if (x < gridWidth - 1 && arrangement[y][x + 1]) {
-      const eastTile = arrangement[y][x + 1]!;
-      const eastCompatible = new Set<Tile>();
-      for (const tile of compatibleTiles) {
-        if (
-          eastTile.borders.west.has(tile.id) ||
-          tile.borders.east.has(eastTile.id)
-        ) {
-          eastCompatible.add(tile);
-        }
-      }
-      compatibleTiles.clear();
-      for (const tile of eastCompatible) {
-        compatibleTiles.add(tile);
-      }
-    }
-
-    return compatibleTiles;
-  }
-
-  /**
-   * Calculates a compatibility score for a tile arrangement
-   * @param arrangement - The tile arrangement to score
-   * @returns Compatibility score (higher is better)
-   */
-  private calculateCompatibilityScore(arrangement: (Tile | null)[][]): number {
-    let score = 0;
-    const gridHeight = arrangement.length;
-    const gridWidth = arrangement[0].length;
-
-    for (let gridY = 0; gridY < gridHeight; gridY++) {
-      for (let gridX = 0; gridX < gridWidth; gridX++) {
-        const tile = arrangement[gridY][gridX];
-        if (!tile) continue;
-
-        // Check compatibility with neighbors
-        if (gridY > 0 && arrangement[gridY - 1][gridX]) {
-          const northTile = arrangement[gridY - 1][gridX]!;
+          console.log(
+            `Progress: ${message.totalCollapsed}/${message.totalCells} cells collapsed`
+          );
+        } else if (message.type === "result") {
           if (
-            northTile.borders.south.has(tile.id) ||
-            tile.borders.north.has(northTile.id)
+            message.success &&
+            message.arrangement &&
+            message.compatibilityScore !== undefined
           ) {
-            score++;
+            resolve({
+              arrangement: message.arrangement,
+              compatibilityScore: message.compatibilityScore,
+            });
+          } else {
+            reject(new Error(message.error || "Synthesis failed"));
           }
         }
+      };
 
-        if (gridX > 0 && arrangement[gridY][gridX - 1]) {
-          const westTile = arrangement[gridY][gridX - 1]!;
-          if (
-            westTile.borders.east.has(tile.id) ||
-            tile.borders.west.has(westTile.id)
-          ) {
-            score++;
-          }
-        }
+      // Set up error handler
+      this.worker.onerror = (error) => {
+        reject(new Error(`Worker error: ${error.message}`));
+      };
 
-        if (gridY < gridHeight - 1 && arrangement[gridY + 1][gridX]) {
-          const southTile = arrangement[gridY + 1][gridX]!;
-          if (
-            southTile.borders.north.has(tile.id) ||
-            tile.borders.south.has(southTile.id)
-          ) {
-            score++;
-          }
-        }
-
-        if (gridX < gridWidth - 1 && arrangement[gridY][gridX + 1]) {
-          const eastTile = arrangement[gridY][gridX + 1]!;
-          if (
-            eastTile.borders.west.has(tile.id) ||
-            tile.borders.east.has(eastTile.id)
-          ) {
-            score++;
-          }
-        }
-      }
-    }
-
-    return score;
+      // Send synthesis message to worker
+      this.worker.postMessage({
+        type: "synthesize",
+        tiles: tileData,
+        targetWidth,
+        targetHeight,
+        tileWidth: this.tileWidth,
+        tileHeight: this.tileHeight,
+      });
+    });
   }
 }
