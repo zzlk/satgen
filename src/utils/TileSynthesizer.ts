@@ -86,7 +86,8 @@ export class TileSynthesizer {
     try {
       // Create and start the web worker
       this.worker = new Worker(
-        new URL("../workers/tileSynthesisWorker.ts", import.meta.url)
+        new URL("../workers/tileSynthesisWorker.ts", import.meta.url),
+        { type: "module" }
       );
 
       // Set up message handling

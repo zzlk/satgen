@@ -1,1 +1,1 @@
-{"root":["./vite.config.ts","./src/main.tsx","./src/routes/index.tsx"],"version":"5.9.2"}
+{"root":["./src/main.tsx","./src/components/FilePicker.tsx","./src/components/TileDisplay.tsx","./src/routes/index.tsx","./src/test/setup.ts","./src/utils/Tile.ts","./src/utils/TileCollection.ts","./src/utils/TileSynthesizer.ts","./src/utils/imageProcessor.ts","./src/workers/tileSynthesisWorker.test.ts","./src/workers/tileSynthesisWorker.ts","./src/workers/tileSynthesizer.ts"],"version":"5.9.2"}
