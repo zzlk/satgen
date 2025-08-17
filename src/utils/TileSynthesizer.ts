@@ -4,12 +4,15 @@ export interface SynthesisResult {
   arrangement: (Tile | null)[][];
   compatibilityScore: number;
   dataUrl: string;
+  isPartial?: boolean;
+  attemptNumber?: number;
 }
 
 export interface SynthesisProgress {
   iteration: number;
   totalCollapsed: number;
   totalCells: number;
+  attemptNumber: number;
   collapsedCell?: {
     x: number;
     y: number;
@@ -22,6 +25,11 @@ export interface SynthesisProgress {
     fromCount: number;
     toCount: number;
   }[];
+}
+
+export interface SynthesisAttemptStart {
+  attemptNumber: number;
+  maxAttempts: number;
 }
 
 export class TileSynthesizer {
@@ -44,12 +52,16 @@ export class TileSynthesizer {
    * @param targetWidth - Desired width in pixels (must be multiple of tile width)
    * @param targetHeight - Desired height in pixels (must be multiple of tile height)
    * @param onProgress - Optional callback for progress updates
+   * @param onAttemptStart - Optional callback for attempt start updates
+   * @param onPartialResult - Optional callback for partial results from failed attempts
    * @returns Promise that resolves with the synthesis result
    */
   async synthesize(
     targetWidth: number,
     targetHeight: number,
-    onProgress?: (progress: SynthesisProgress) => void
+    onProgress?: (progress: SynthesisProgress) => void,
+    onAttemptStart?: (attemptStart: SynthesisAttemptStart) => void,
+    onPartialResult?: (result: SynthesisResult) => void
   ): Promise<SynthesisResult> {
     // Validate target dimensions are multiples of tile dimensions
     if (targetWidth % this.tileWidth !== 0) {
@@ -81,7 +93,9 @@ export class TileSynthesizer {
       const result = await this.runWorkerSynthesis(
         targetWidth,
         targetHeight,
-        onProgress
+        onProgress,
+        onAttemptStart,
+        onPartialResult
       );
 
       // Clean up worker
@@ -177,12 +191,16 @@ export class TileSynthesizer {
    * @param targetWidth - Target width in pixels
    * @param targetHeight - Target height in pixels
    * @param onProgress - Optional progress callback
+   * @param onAttemptStart - Optional callback for attempt start
+   * @param onPartialResult - Optional callback for partial results
    * @returns Promise that resolves with the worker result
    */
   private runWorkerSynthesis(
     targetWidth: number,
     targetHeight: number,
-    onProgress?: (progress: SynthesisProgress) => void
+    onProgress?: (progress: SynthesisProgress) => void,
+    onAttemptStart?: (attemptStart: SynthesisAttemptStart) => void,
+    onPartialResult?: (result: SynthesisResult) => void
   ): Promise<{ arrangement: string[][]; compatibilityScore: number }> {
     return new Promise((resolve, reject) => {
       if (!this.worker) {
@@ -208,7 +226,15 @@ export class TileSynthesizer {
       this.worker.onmessage = (event) => {
         const message = event.data;
 
-        if (message.type === "progress") {
+        if (message.type === "attempt_start") {
+          // Forward attempt start updates to the callback
+          if (onAttemptStart) {
+            onAttemptStart(message);
+          }
+          console.log(
+            `Starting attempt ${message.attemptNumber}/${message.maxAttempts}`
+          );
+        } else if (message.type === "progress") {
           // Forward progress updates to the callback
           if (onProgress) {
             onProgress(message);
@@ -217,7 +243,7 @@ export class TileSynthesizer {
           // Log progress to console
           if (message.collapsedCell) {
             console.log(
-              `Collapsed cell (${message.collapsedCell.x},${message.collapsedCell.y}) with ${message.collapsedCell.possibilities} possibilities to tile: ${message.collapsedCell.tileId}`
+              `Attempt ${message.attemptNumber}: Collapsed cell (${message.collapsedCell.x},${message.collapsedCell.y}) with ${message.collapsedCell.possibilities} possibilities to tile: ${message.collapsedCell.tileId}`
             );
           }
 
@@ -226,19 +252,28 @@ export class TileSynthesizer {
             message.propagationChanges.length > 0
           ) {
             console.log(
-              `Propagation: ${message.propagationChanges.length} cells updated`
+              `Attempt ${message.attemptNumber}: Propagation: ${message.propagationChanges.length} cells updated`
             );
           }
 
           console.log(
-            `Progress: ${message.totalCollapsed}/${message.totalCells} cells collapsed`
+            `Attempt ${message.attemptNumber}: Progress: ${message.totalCollapsed}/${message.totalCells} cells collapsed`
           );
         } else if (message.type === "result") {
-          if (
+          if (message.isPartial && message.arrangement && onPartialResult) {
+            // Handle partial result from failed attempt
+            const partialResult = this.createPartialResult(
+              message.arrangement,
+              message.compatibilityScore || 0,
+              message.attemptNumber || 0
+            );
+            onPartialResult(partialResult);
+          } else if (
             message.success &&
             message.arrangement &&
             message.compatibilityScore !== undefined
           ) {
+            // Final successful result
             resolve({
               arrangement: message.arrangement,
               compatibilityScore: message.compatibilityScore,
@@ -264,5 +299,33 @@ export class TileSynthesizer {
         tileHeight: this.tileHeight,
       });
     });
+  }
+
+  /**
+   * Creates a partial result from a failed attempt
+   * @param arrangement - The partial arrangement from the worker
+   * @param compatibilityScore - The compatibility score
+   * @param attemptNumber - The attempt number
+   * @returns Partial synthesis result
+   */
+  private createPartialResult(
+    arrangement: string[][],
+    compatibilityScore: number,
+    attemptNumber: number
+  ): SynthesisResult {
+    // Convert tile IDs back to Tile objects for the result
+    const tileArrangement: (Tile | null)[][] = arrangement.map((row) =>
+      row.map((tileId) =>
+        tileId ? this.tiles.find((t) => t.id === tileId) || null : null
+      )
+    );
+
+    return {
+      arrangement: tileArrangement,
+      compatibilityScore: compatibilityScore,
+      dataUrl: "", // Will be generated when needed
+      isPartial: true,
+      attemptNumber: attemptNumber,
+    };
   }
 }

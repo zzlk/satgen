@@ -1,6 +1,10 @@
 import { Tile } from "./Tile";
 import { TileSynthesizer } from "./TileSynthesizer";
-import type { SynthesisResult } from "./TileSynthesizer";
+import type {
+  SynthesisResult,
+  SynthesisProgress,
+  SynthesisAttemptStart,
+} from "./TileSynthesizer";
 
 export class TileCollection {
   public readonly tiles: Tile[];
@@ -103,13 +107,25 @@ export class TileCollection {
    * Synthesizes a new image by placing compatible tiles based on border information
    * @param targetWidth - Desired width in pixels (must be multiple of tile width)
    * @param targetHeight - Desired height in pixels (must be multiple of tile height)
+   * @param onProgress - Optional callback for progress updates
+   * @param onAttemptStart - Optional callback for attempt start updates
+   * @param onPartialResult - Optional callback for partial results from failed attempts
    * @returns Promise that resolves with the synthesized image as data URL
    */
-  async synthesize(targetWidth: number, targetHeight: number): Promise<string> {
+  async synthesize(
+    targetWidth: number,
+    targetHeight: number,
+    onProgress?: (progress: SynthesisProgress) => void,
+    onAttemptStart?: (attemptStart: SynthesisAttemptStart) => void,
+    onPartialResult?: (result: SynthesisResult) => void
+  ): Promise<string> {
     const synthesizer = new TileSynthesizer(this.tiles);
     const result: SynthesisResult = await synthesizer.synthesize(
       targetWidth,
-      targetHeight
+      targetHeight,
+      onProgress,
+      onAttemptStart,
+      onPartialResult
     );
     return result.dataUrl;
   }

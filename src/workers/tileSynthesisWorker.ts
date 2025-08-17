@@ -28,6 +28,7 @@ interface ProgressMessage {
   iteration: number;
   totalCollapsed: number;
   totalCells: number;
+  attemptNumber: number;
   collapsedCell?: {
     x: number;
     y: number;
@@ -42,12 +43,20 @@ interface ProgressMessage {
   }[];
 }
 
+interface AttemptStartMessage {
+  type: "attempt_start";
+  attemptNumber: number;
+  maxAttempts: number;
+}
+
 interface ResultMessage {
   type: "result";
   success: boolean;
   arrangement?: string[][]; // Array of tile IDs
   error?: string;
   compatibilityScore?: number;
+  isPartial?: boolean; // Indicates if this is a partial result from a failed attempt
+  attemptNumber?: number; // Which attempt this result came from
 }
 
 type WorkerMessage = SynthesisMessage;
@@ -67,7 +76,77 @@ class TileSynthesisWorker {
   async synthesize(targetWidth: number, targetHeight: number): Promise<void> {
     const gridWidth = targetWidth / this.tileWidth;
     const gridHeight = targetHeight / this.tileHeight;
+    const maxAttempts = 1000; // Maximum number of restart attempts
 
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`Starting synthesis attempt ${attempt}/${maxAttempts}`);
+
+      // Send attempt start message
+      this.sendAttemptStart(attempt, maxAttempts);
+
+      try {
+        const result = await this.runSingleAttempt(
+          gridWidth,
+          gridHeight,
+          attempt
+        );
+        if (result.success) {
+          // Success! Send the final result
+          this.sendResult(
+            true,
+            result.arrangement,
+            undefined,
+            result.compatibilityScore
+          );
+          return;
+        }
+        // If we get here, we hit max iterations - send partial result and continue
+        if (result.arrangement) {
+          this.sendPartialResult(
+            result.arrangement,
+            attempt,
+            result.compatibilityScore || 0
+          );
+        }
+      } catch (error) {
+        // Contradiction found - send partial result if we have one, then continue
+        if (
+          error &&
+          typeof error === "object" &&
+          "partialArrangement" in error
+        ) {
+          const errorObj = error as any;
+          if (errorObj.partialArrangement) {
+            this.sendPartialResult(
+              errorObj.partialArrangement,
+              attempt,
+              errorObj.compatibilityScore || 0
+            );
+          }
+        }
+        console.log(
+          `Attempt ${attempt} failed with contradiction, restarting...`
+        );
+      }
+    }
+
+    // All attempts failed
+    this.sendResult(
+      false,
+      undefined,
+      `Failed to find a solution after ${maxAttempts} attempts`
+    );
+  }
+
+  private async runSingleAttempt(
+    gridWidth: number,
+    gridHeight: number,
+    attemptNumber: number
+  ): Promise<{
+    success: boolean;
+    arrangement?: (string | null)[][];
+    compatibilityScore?: number;
+  }> {
     // Initialize the wave function: each cell contains a set of all possible tile IDs
     const waveFunction: Set<string>[][] = Array(gridHeight)
       .fill(null)
@@ -88,8 +167,14 @@ class TileSynthesisWorker {
     while (iteration < maxIterations) {
       iteration++;
 
-      // Send progress update
-      this.sendProgress(iteration, arrangement, gridWidth, gridHeight);
+      // Send progress update with attempt number
+      this.sendProgress(
+        iteration,
+        arrangement,
+        gridWidth,
+        gridHeight,
+        attemptNumber
+      );
 
       // Step 1: Propagate constraints
       const propagationResult = this.propagateConstraints(
@@ -97,12 +182,8 @@ class TileSynthesisWorker {
         arrangement
       );
       if (!propagationResult.success) {
-        this.sendResult(
-          false,
-          undefined,
-          "Wave Function Collapse failed: conflicting constraints"
-        );
-        return;
+        // Contradiction found - throw error to trigger restart
+        throw new Error("Contradiction found during propagation");
       }
 
       // Step 2: Collapse the most constrained cell
@@ -110,8 +191,7 @@ class TileSynthesisWorker {
       if (!collapseResult.success) {
         // All cells collapsed - synthesis complete
         const finalScore = this.calculateCompatibilityScore(arrangement);
-        this.sendResult(true, arrangement, undefined, finalScore);
-        return;
+        return { success: true, arrangement, compatibilityScore: finalScore };
       }
 
       // Check if we've completed the entire grid
@@ -126,16 +206,12 @@ class TileSynthesisWorker {
 
       if (totalCollapsed === gridWidth * gridHeight) {
         const finalScore = this.calculateCompatibilityScore(arrangement);
-        this.sendResult(true, arrangement, undefined, finalScore);
-        return;
+        return { success: true, arrangement, compatibilityScore: finalScore };
       }
     }
 
-    this.sendResult(
-      false,
-      undefined,
-      "Reached maximum iterations - synthesis may be incomplete"
-    );
+    // Reached max iterations for this attempt
+    return { success: false };
   }
 
   private propagateConstraints(
@@ -199,7 +275,14 @@ class TileSynthesisWorker {
 
           // If no possibilities remain, propagation failed
           if (currentPossibilities.size === 0) {
-            return { success: false, changesMade: changesMade };
+            // Create a custom error with partial arrangement
+            const error = new Error(
+              "Contradiction found during propagation"
+            ) as any;
+            error.partialArrangement = arrangement;
+            error.compatibilityScore =
+              this.calculateCompatibilityScore(arrangement);
+            throw error;
           }
         }
       }
@@ -213,6 +296,7 @@ class TileSynthesisWorker {
           arrangement,
           gridWidth,
           gridHeight,
+          0, // attemptNumber - we'll get this from the calling context
           undefined,
           propagationChanges
         );
@@ -262,7 +346,7 @@ class TileSynthesisWorker {
     waveFunction[collapseY][collapseX].add(selectedTileId);
 
     // Send collapse update
-    this.sendProgress(0, arrangement, gridWidth, gridHeight, {
+    this.sendProgress(0, arrangement, gridWidth, gridHeight, 0, {
       x: collapseX,
       y: collapseY,
       tileId: selectedTileId,
@@ -456,11 +540,22 @@ class TileSynthesisWorker {
     return score;
   }
 
+  private sendAttemptStart(attemptNumber: number, maxAttempts: number) {
+    const message: AttemptStartMessage = {
+      type: "attempt_start",
+      attemptNumber,
+      maxAttempts,
+    };
+
+    self.postMessage(message);
+  }
+
   private sendProgress(
     iteration: number,
     arrangement: (string | null)[][],
     gridWidth: number,
     gridHeight: number,
+    attemptNumber: number,
     collapsedCell?: {
       x: number;
       y: number;
@@ -488,8 +583,27 @@ class TileSynthesisWorker {
       iteration,
       totalCollapsed,
       totalCells: gridWidth * gridHeight,
+      attemptNumber,
       collapsedCell,
       propagationChanges,
+    };
+
+    self.postMessage(message);
+  }
+
+  private sendPartialResult(
+    arrangement: (string | null)[][],
+    attemptNumber: number,
+    compatibilityScore: number
+  ) {
+    const message: ResultMessage = {
+      type: "result",
+      success: false,
+      arrangement: arrangement.map((row) => row.map((cell) => cell || "")),
+      error: `Partial result from attempt ${attemptNumber}`,
+      compatibilityScore,
+      isPartial: true,
+      attemptNumber,
     };
 
     self.postMessage(message);

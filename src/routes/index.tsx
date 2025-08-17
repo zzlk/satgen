@@ -5,6 +5,11 @@ import TileDisplay from "../components/TileDisplay";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
+import type {
+  SynthesisProgress,
+  SynthesisAttemptStart,
+  SynthesisResult,
+} from "../utils/TileSynthesizer";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -20,6 +25,18 @@ export default function () {
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
   const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [synthesisProgress, setSynthesisProgress] =
+    useState<SynthesisProgress | null>(null);
+  const [currentAttempt, setCurrentAttempt] = useState<{
+    number: number;
+    max: number;
+  } | null>(null);
+  const [partialResult, setPartialResult] = useState<SynthesisResult | null>(
+    null
+  );
+  const [partialResultImage, setPartialResultImage] = useState<string | null>(
+    null
+  );
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -58,6 +75,38 @@ export default function () {
     }
   };
 
+  const handleProgressUpdate = useCallback((progress: SynthesisProgress) => {
+    setSynthesisProgress(progress);
+    console.log(
+      `Progress: ${progress.totalCollapsed}/${progress.totalCells} cells collapsed (Attempt ${progress.attemptNumber})`
+    );
+  }, []);
+
+  const handleAttemptStart = useCallback(
+    (attemptStart: SynthesisAttemptStart) => {
+      setCurrentAttempt({
+        number: attemptStart.attemptNumber,
+        max: attemptStart.maxAttempts,
+      });
+      console.log(
+        `Starting attempt ${attemptStart.attemptNumber}/${attemptStart.maxAttempts}`
+      );
+    },
+    []
+  );
+
+  const handlePartialResult = useCallback(
+    (partialResult: SynthesisResult) => {
+      setPartialResult(partialResult);
+      console.log(
+        `Partial result from attempt ${partialResult.attemptNumber}: ${partialResult.compatibilityScore} compatibility`
+      );
+      // Render partial result as image
+      renderPartialResultImage(partialResult);
+    },
+    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight]
+  );
+
   const handleSynthesize = async () => {
     if (enhancedTiles.length === 0) {
       alert("Please process an image into tiles first.");
@@ -66,6 +115,10 @@ export default function () {
 
     setIsSynthesizing(true);
     setSynthesizedImage(null);
+    setSynthesisProgress(null);
+    setCurrentAttempt(null);
+    setPartialResult(null);
+    setPartialResultImage(null);
 
     try {
       const targetWidth = synthesizeWidth * tileWidth;
@@ -83,7 +136,10 @@ export default function () {
 
       const result = await synthesisCollection.synthesize(
         targetWidth,
-        targetHeight
+        targetHeight,
+        handleProgressUpdate,
+        handleAttemptStart,
+        handlePartialResult
       );
       setSynthesizedImage(result);
     } catch (error) {
@@ -95,8 +151,67 @@ export default function () {
       );
     } finally {
       setIsSynthesizing(false);
+      setSynthesisProgress(null);
+      setCurrentAttempt(null);
     }
   };
+
+  const renderPartialResultImage = useCallback(
+    async (result: SynthesisResult) => {
+      if (!result.arrangement || result.arrangement.length === 0) return;
+
+      const targetWidth = synthesizeWidth * tileWidth;
+      const targetHeight = synthesizeHeight * tileHeight;
+
+      // Create canvas for the partial result
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) return;
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+      // Render the partial arrangement
+      for (let gridY = 0; gridY < result.arrangement.length; gridY++) {
+        for (let gridX = 0; gridX < result.arrangement[gridY].length; gridX++) {
+          const tile = result.arrangement[gridY][gridX];
+          if (tile) {
+            const targetX = gridX * tileWidth;
+            const targetY = gridY * tileHeight;
+
+            const tileCanvas = document.createElement("canvas");
+            const tileCtx = tileCanvas.getContext("2d");
+
+            if (tileCtx) {
+              const tileImg = new Image();
+
+              await new Promise<void>((resolve, reject) => {
+                tileImg.onload = () => {
+                  tileCanvas.width = tileWidth;
+                  tileCanvas.height = tileHeight;
+                  tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
+                  ctx.drawImage(tileCanvas, targetX, targetY);
+                  resolve();
+                };
+
+                tileImg.onerror = () => {
+                  reject(new Error(`Failed to load tile image: ${tile.id}`));
+                };
+
+                tileImg.src = tile.dataUrl;
+              });
+            }
+          }
+        }
+      }
+
+      const dataUrl = canvas.toDataURL("image/png");
+      setPartialResultImage(dataUrl);
+    },
+    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight]
+  );
 
   return (
     <div className="image-tile-cutter-container">
@@ -210,6 +325,75 @@ export default function () {
             >
               {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
             </button>
+          </div>
+
+          {/* Progress Display */}
+          <div
+            className="synthesis-progress"
+            style={{
+              minHeight: isSynthesizing ? "300px" : "auto",
+              transition: "min-height 0.3s ease-in-out",
+            }}
+          >
+            {isSynthesizing && (
+              <>
+                <h4 className="progress-title">Synthesis Progress</h4>
+
+                {currentAttempt && (
+                  <div className="attempt-info">
+                    <p>
+                      Attempt {currentAttempt.number} of {currentAttempt.max}
+                    </p>
+                  </div>
+                )}
+
+                {synthesisProgress && (
+                  <div className="progress-info">
+                    <p>
+                      Cells collapsed: {synthesisProgress.totalCollapsed}/
+                      {synthesisProgress.totalCells}
+                    </p>
+                    <p>Iteration: {synthesisProgress.iteration}</p>
+
+                    {synthesisProgress.collapsedCell && (
+                      <p>
+                        Last collapsed: ({synthesisProgress.collapsedCell.x},{" "}
+                        {synthesisProgress.collapsedCell.y}) with{" "}
+                        {synthesisProgress.collapsedCell.possibilities}{" "}
+                        possibilities
+                      </p>
+                    )}
+
+                    {synthesisProgress.propagationChanges &&
+                      synthesisProgress.propagationChanges.length > 0 && (
+                        <p>
+                          Propagation:{" "}
+                          {synthesisProgress.propagationChanges.length} cells
+                          updated
+                        </p>
+                      )}
+                  </div>
+                )}
+
+                {partialResultImage && (
+                  <div className="partial-result">
+                    <h5>Partial Result</h5>
+                    <div className="partial-image-container">
+                      <img
+                        src={partialResultImage}
+                        alt="Partial Result"
+                        style={{
+                          maxWidth: "100%",
+                          height: "auto",
+                          border: "1px solid #ccc",
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {synthesizedImage && (
