@@ -252,6 +252,8 @@ export class TileCollection {
    * Analyzes pixel borders to find compatible tiles and adds them to border sets
    * @returns New TileCollection with enhanced border information
    */
+  // INACTIVATED: Pixel border analysis merging temporarily disabled
+  /*
   async addCompatibleBorders(): Promise<TileCollection> {
     if (this.tiles.length === 0) {
       return this;
@@ -313,12 +315,15 @@ export class TileCollection {
       this.tilesY
     );
   }
+  */
 
   /**
    * Gets the pixel borders of a tile
    * @param tile - The tile to analyze
    * @returns Object with pixel border data
    */
+  // INACTIVATED: Helper method for pixel border analysis
+  /*
   private async getPixelBorders(tile: Tile): Promise<{
     north: Uint8ClampedArray;
     east: Uint8ClampedArray;
@@ -405,6 +410,7 @@ export class TileCollection {
       img.src = tile.dataUrl;
     });
   }
+  */
 
   /**
    * Checks if two pixel borders are compatible and adds them to border sets
@@ -413,6 +419,8 @@ export class TileCollection {
    * @param borders1 - Pixel borders of first tile
    * @param borders2 - Pixel borders of second tile
    */
+  // INACTIVATED: Helper method for pixel border analysis
+  /*
   private checkAndAddCompatibility(
     tile1: Tile,
     tile2: Tile,
@@ -453,12 +461,15 @@ export class TileCollection {
       (tile2 as any).borders.east.add(tile1.id);
     }
   }
+  */
 
   /**
    * Checks if a tile can border itself and adds self-references to border sets
    * @param tile - The tile to check for self-compatibility
    * @param borders - Pixel borders of the tile
    */
+  // INACTIVATED: Helper method for pixel border analysis
+  /*
   private checkAndAddSelfCompatibility(
     tile: Tile,
     borders: {
@@ -487,6 +498,7 @@ export class TileCollection {
     // in this implementation. Same-direction borders should only be compatible if
     // the tile has uniform borders in that direction.
   }
+  */
 
   /**
    * Checks if two pixel borders are compatible
@@ -494,6 +506,8 @@ export class TileCollection {
    * @param border2 - Second border pixel data
    * @returns True if borders are compatible
    */
+  // INACTIVATED: Helper method for pixel border analysis
+  /*
   private areBordersCompatible(
     border1: Uint8ClampedArray,
     border2: Uint8ClampedArray
@@ -528,4 +542,5 @@ export class TileCollection {
 
     return true;
   }
+  */
 }

@@ -668,6 +668,14 @@ export class TileSynthesizer {
             `✅ Synthesis completed successfully in ${iteration} iterations!`
           );
           const arrangement = this.getArrangement();
+
+          // Validate the final arrangement (log warnings but don't fail)
+          const validation = this.validateArrangement(arrangement);
+          if (!validation.isValid) {
+            console.warn(`⚠️ Final arrangement has validation issues:`);
+            validation.errors.forEach((error) => console.warn(`  - ${error}`));
+          }
+
           const score = this.calculateCompatibilityScore(arrangement);
           console.log(`🏆 Final compatibility score: ${score}`);
           resolve({ success: true, arrangement, compatibilityScore: score });
@@ -785,40 +793,9 @@ export class TileSynthesizer {
       return { chosenTile: possibilities[0] || "", toRemove: new Set() }; // Return empty set if no other possibilities
     }
 
-    // Calculate support scores for each tile
-    const tileScores: Array<{ tileId: string; score: number }> = [];
-    for (const tileId of possibilities) {
-      let score = 0;
-      for (let dir = 0; dir < 4; dir++) {
-        score += cell.getSupport(tileId, dir);
-      }
-      tileScores.push({ tileId, score });
-    }
-
-    // Sort by support score (highest first)
-    tileScores.sort((a, b) => b.score - a.score);
-
-    // Add randomness to tile selection while maintaining good support
-    const maxScore = tileScores[0].score;
-    const minAcceptableScore = Math.max(0, maxScore * 0.7); // Accept tiles with at least 70% of max support
-
-    // Filter tiles with acceptable support scores
-    const acceptableTiles = tileScores.filter(
-      (tile) => tile.score >= minAcceptableScore
-    );
-
-    let chosenTile: string;
-    if (acceptableTiles.length > 1) {
-      // Randomly choose from acceptable tiles, with bias towards higher scores
-      const weights = acceptableTiles.map((tile) => tile.score);
-      chosenTile = this.weightedRandomChoice(
-        acceptableTiles.map((t) => t.tileId),
-        weights
-      );
-    } else {
-      // Fallback to the best tile if no other acceptable options
-      chosenTile = tileScores[0].tileId;
-    }
+    // Choose a completely random tile from the possible ones
+    const chosenTile =
+      possibilities[Math.floor(Math.random() * possibilities.length)];
 
     const toRemove = new Set<string>();
     for (const tileId of possibilities) {
@@ -827,10 +804,8 @@ export class TileSynthesizer {
       }
     }
 
-    const chosenScore =
-      tileScores.find((t) => t.tileId === chosenTile)?.score || 0;
     console.log(
-      `🎲 Randomly selected tile ${chosenTile} with support score ${chosenScore} (removing ${toRemove.size} others)`
+      `🎲 Randomly selected tile ${chosenTile} from ${possibilities.length} possibilities (removing ${toRemove.size} others)`
     );
     return { chosenTile, toRemove };
   }
@@ -1002,6 +977,121 @@ export class TileSynthesizer {
       }
     }
     return arrangement;
+  }
+
+  private validateArrangement(arrangement: (string | null)[][]): {
+    isValid: boolean;
+    errors: string[];
+  } {
+    const errors: string[] = [];
+
+    for (let y = 0; y < this.gridHeight; y++) {
+      for (let x = 0; x < this.gridWidth; x++) {
+        const tileId = arrangement[y][x];
+        if (!tileId) continue;
+
+        const tile = this.tiles.find((t) => t.id === tileId);
+        if (!tile) {
+          errors.push(`Invalid tile ID at (${x}, ${y}): ${tileId}`);
+          continue;
+        }
+
+        // Check compatibility with neighbors
+        if (y > 0 && arrangement[y - 1][x]) {
+          const northTileId = arrangement[y - 1][x]!;
+          const northTile = this.tiles.find((t) => t.id === northTileId);
+          if (!northTile) {
+            errors.push(
+              `Invalid north neighbor tile ID at (${x}, ${
+                y - 1
+              }): ${northTileId}`
+            );
+            continue;
+          }
+
+          const isCompatible =
+            tile.borders.north.includes(northTileId) ||
+            northTile.borders.south.includes(tileId);
+          if (!isCompatible) {
+            errors.push(
+              `Incompatible tiles at (${x}, ${y}) and (${x}, ${
+                y - 1
+              }): ${tileId} cannot be north of ${northTileId}`
+            );
+          }
+        }
+
+        if (x > 0 && arrangement[y][x - 1]) {
+          const westTileId = arrangement[y][x - 1]!;
+          const westTile = this.tiles.find((t) => t.id === westTileId);
+          if (!westTile) {
+            errors.push(
+              `Invalid west neighbor tile ID at (${x - 1}, ${y}): ${westTileId}`
+            );
+            continue;
+          }
+
+          const isCompatible =
+            tile.borders.west.includes(westTileId) ||
+            westTile.borders.east.includes(tileId);
+          if (!isCompatible) {
+            errors.push(
+              `Incompatible tiles at (${x}, ${y}) and (${
+                x - 1
+              }, ${y}): ${tileId} cannot be east of ${westTileId}`
+            );
+          }
+        }
+
+        if (y < this.gridHeight - 1 && arrangement[y + 1][x]) {
+          const southTileId = arrangement[y + 1][x]!;
+          const southTile = this.tiles.find((t) => t.id === southTileId);
+          if (!southTile) {
+            errors.push(
+              `Invalid south neighbor tile ID at (${x}, ${
+                y + 1
+              }): ${southTileId}`
+            );
+            continue;
+          }
+
+          const isCompatible =
+            tile.borders.south.includes(southTileId) ||
+            southTile.borders.north.includes(tileId);
+          if (!isCompatible) {
+            errors.push(
+              `Incompatible tiles at (${x}, ${y}) and (${x}, ${
+                y + 1
+              }): ${tileId} cannot be south of ${southTileId}`
+            );
+          }
+        }
+
+        if (x < this.gridWidth - 1 && arrangement[y][x + 1]) {
+          const eastTileId = arrangement[y][x + 1]!;
+          const eastTile = this.tiles.find((t) => t.id === eastTileId);
+          if (!eastTile) {
+            errors.push(
+              `Invalid east neighbor tile ID at (${x + 1}, ${y}): ${eastTileId}`
+            );
+            continue;
+          }
+
+          const isCompatible =
+            tile.borders.east.includes(eastTileId) ||
+            eastTile.borders.west.includes(tileId);
+          if (!isCompatible) {
+            errors.push(
+              `Incompatible tiles at (${x}, ${y}) and (${
+                x + 1
+              }, ${y}): ${tileId} cannot be west of ${eastTileId}`
+            );
+          }
+        }
+      }
+    }
+
+    return { isValid: errors.length === 0, errors };
   }
 
   private calculateCompatibilityScore(

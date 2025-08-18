@@ -43,27 +43,27 @@ export default function TileDisplay({
 
         // Calculate original border count
         const originalBorderCount = mergedCollection.tiles.reduce(
-          (total, tile) => total + tile.getBorderCount(),
+          (total: number, tile: Tile) => total + tile.getBorderCount(),
           0
         );
 
         // Add compatible borders based on pixel content
-        const enhancedCollection =
-          await mergedCollection.addCompatibleBorders();
+        // const enhancedCollection =
+        //   await mergedCollection.addCompatibleBorders();
 
         // Calculate enhanced border count
-        const enhancedBorderCount = enhancedCollection.tiles.reduce(
-          (total, tile) => total + tile.getBorderCount(),
-          0
-        );
+        // const enhancedBorderCount = enhancedCollection.tiles.reduce(
+        //   (total: number, tile: Tile) => total + tile.getBorderCount(),
+        //   0
+        // );
 
-        setEnhancedTiles(enhancedCollection.tiles);
-        setBorderEnhancementStats({
-          originalBorderCount,
-          enhancedBorderCount,
-          addedBorders: enhancedBorderCount - originalBorderCount,
-        });
-        onEnhancedTilesChange?.(enhancedCollection.tiles);
+        setEnhancedTiles(mergedCollection.tiles);
+        // setBorderEnhancementStats({
+        //   originalBorderCount,
+        //   enhancedBorderCount,
+        //   addedBorders: enhancedBorderCount - originalBorderCount,
+        // });
+        onEnhancedTilesChange?.(mergedCollection.tiles);
       } catch (error) {
         console.error("Error enhancing tiles:", error);
         // Fallback to merged tiles without enhanced borders
