@@ -348,12 +348,14 @@ export class TileSynthesizer {
       if (nx >= 0 && nx < this.gridWidth && ny >= 0 && ny < this.gridHeight) {
         const neighborCell = this.cells[ny][nx];
 
+        // Only consider tiles that are actually possible in the neighbor cell
         for (const neighborTileId of neighborCell.getPossibilities()) {
           const neighborRules = this.rules.get(neighborTileId);
           if (neighborRules) {
             const allowedTiles = neighborRules.get(dir.toString());
             if (allowedTiles) {
               for (const allowedTileId of allowedTiles) {
+                // Only add support if the tile is still possible in the current cell
                 if (cell.hasPossibility(allowedTileId)) {
                   const currentSupport = cell.getSupport(allowedTileId, dir);
                   cell.setSupport(allowedTileId, dir, currentSupport + 1);
@@ -399,6 +401,39 @@ export class TileSynthesizer {
     }
   }
 
+  private propagateAdd(
+    deactivations: Array<{ x: number; y: number; tileId: string }>
+  ): void {
+    // Restore tiles that were previously removed
+    for (const { x, y, tileId } of deactivations) {
+      const cell = this.cells[y][x];
+      if (!cell.hasPossibility(tileId)) {
+        cell.addPossibility(tileId);
+      }
+    }
+
+    // Recalculate support for all affected cells
+    const affectedCells: Array<{ x: number; y: number }> = [];
+    for (const { x, y } of deactivations) {
+      affectedCells.push({ x, y });
+      // Add neighboring cells that might be affected
+      const directions = [
+        { dx: 0, dy: -1 }, // north
+        { dx: 1, dy: 0 }, // east
+        { dx: 0, dy: 1 }, // south
+        { dx: -1, dy: 0 }, // west
+      ];
+      for (const { dx, dy } of directions) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && nx < this.gridWidth && ny >= 0 && ny < this.gridHeight) {
+          affectedCells.push({ x: nx, y: ny });
+        }
+      }
+    }
+    this.recalculateSupportForAffectedCells(affectedCells);
+  }
+
   private logicalConclusion(attemptNumber: number): Promise<{
     success: boolean;
     arrangement?: (string | null)[][];
@@ -410,9 +445,6 @@ export class TileSynthesizer {
       > = [];
       const indices: Array<Array<{ x: number; y: number; entropy: number }>> =
         [];
-      const cellStates: Array<
-        { x: number; y: number; possibilities: Set<string> }[]
-      > = [];
 
       let currentIndices = this.getEntropyIndices(3); // Start with fewer indices
       let iteration = 0;
@@ -488,13 +520,9 @@ export class TileSynthesizer {
             } deactivated tiles`
           );
 
-          // Restore cell states
-          const cellState = cellStates.pop()!;
-          for (const { x, y, possibilities } of cellState) {
-            this.cells[y][x] = new Cell(Array.from(possibilities));
-          }
-
           const deactivated = deactivations.pop()!;
+          // Restore tiles that were removed in this propagation
+          this.propagateAdd(deactivated);
           currentIndices = indices.pop()!;
           consecutiveContradictions = 0; // Reset contradiction counter
           continue;
@@ -516,20 +544,13 @@ export class TileSynthesizer {
             // if `propagateRemove` correctly identifies it.
             // For now, if we hit 0 possibilities here, it means a deeper issue or a missed contradiction flag.
             // We'll force a backtrack.
-            if (
-              deactivations.length > 0 &&
-              indices.length > 0 &&
-              cellStates.length > 0
-            ) {
+            if (deactivations.length > 0 && indices.length > 0) {
               console.log(
                 `🔄 Backtracking due to 0 possibilities: restoring previous state`
               );
               const deactivated = deactivations.pop()!;
               currentIndices = indices.pop()!;
-              const restoredCellState = cellStates.pop()!;
-              for (const { x: cx, y: cy, possibilities } of restoredCellState) {
-                this.cells[cy][cx] = new Cell(Array.from(possibilities));
-              }
+              this.propagateAdd(deactivated);
               // We don't know which specific tile caused this, so we just backtrack a full step.
               consecutiveContradictions++; // Count this as a contradiction
               continue;
@@ -550,20 +571,6 @@ export class TileSynthesizer {
         console.log(
           `🎲 Processing cell (${x}, ${y}) with ${cell.getPossibilityCount()} possibilities`
         );
-
-        // Save current cell state before making changes
-        const cellState = [];
-        for (let cy = 0; cy < this.gridHeight; cy++) {
-          for (let cx = 0; cx < this.gridWidth; cx++) {
-            const currentCell = this.cells[cy][cx];
-            cellState.push({
-              x: cx,
-              y: cy,
-              possibilities: new Set(currentCell.getPossibilities()),
-            });
-          }
-        }
-        cellStates.push(cellState);
 
         // Choose a tile to keep (smart selection based on support)
         const { chosenTile, toRemove } = this.chooseRemovalSet(x, y);
@@ -591,11 +598,8 @@ export class TileSynthesizer {
             `💥 Contradiction detected! (${consecutiveContradictions}/${maxConsecutiveContradictions}) Restoring ${deactivated.length} tiles`
           );
 
-          // Restore cell states to before this choice was made
-          const restoredCellState = cellStates.pop()!;
-          for (const { x: cx, y: cy, possibilities } of restoredCellState) {
-            this.cells[cy][cx] = new Cell(Array.from(possibilities));
-          }
+          // Restore tiles that were removed in this propagation
+          this.propagateAdd(deactivated);
 
           // Now, remove the problematic chosenTile from the possibilities of the current cell (x,y)
           const currentCell = this.cells[y][x]; // Get the restored cell
@@ -621,21 +625,10 @@ export class TileSynthesizer {
               `⚠️ Chosen tile ${chosenTile} not found in possibilities of cell (${x}, ${y}) after restoration. Backtracking further.`
             );
             // Force a full backtrack step if the specific tile removal isn't possible
-            if (
-              deactivations.length > 0 &&
-              indices.length > 0 &&
-              cellStates.length > 0
-            ) {
+            if (deactivations.length > 0 && indices.length > 0) {
               const prevDeactivated = deactivations.pop()!;
               currentIndices = indices.pop()!;
-              const prevCellState = cellStates.pop()!;
-              for (const {
-                x: pcx,
-                y: pcy,
-                possibilities: ppossibilities,
-              } of prevCellState) {
-                this.cells[pcy][pcx] = new Cell(Array.from(ppossibilities));
-              }
+              this.propagateAdd(prevDeactivated);
             } else {
               console.log(
                 `🔄 No more backtracking possible - attempt ${attemptNumber} failed (deeper contradiction)`
@@ -844,9 +837,7 @@ export class TileSynthesizer {
   } {
     const deactivated: Array<{ x: number; y: number; tileId: string }> = [];
     const queue: Array<{ x: number; y: number; removed: string[] }> = [];
-    const affectedCells: Array<{ x: number; y: number }> = [];
     let contradiction = false;
-    let totalPropagated = 0;
 
     // Remove tiles from starting cell
     const startCell = this.cells[y][x];
@@ -864,13 +855,11 @@ export class TileSynthesizer {
     }
 
     queue.push({ x, y, removed });
-    affectedCells.push({ x, y });
 
     // Process queue
     while (queue.length > 0) {
       const current = queue.pop()!;
       const { x: cx, y: cy, removed } = current;
-      totalPropagated++;
 
       const directions = [
         { dx: 0, dy: -1, dir: 0 }, // north
@@ -887,7 +876,10 @@ export class TileSynthesizer {
           const targetCell = this.cells[ny][nx];
           const newlyRemoved: string[] = [];
 
-          for (const removedTileId of removed) {
+          // Use a Set to avoid duplicate processing of the same removed tile
+          const uniqueRemoved = new Set(removed);
+
+          for (const removedTileId of uniqueRemoved) {
             const rules = this.rules.get(removedTileId);
             if (rules) {
               const allowedTiles = rules.get(dir.toString());
@@ -927,21 +919,33 @@ export class TileSynthesizer {
             if (!found) {
               queue.push({ x: nx, y: ny, removed: newlyRemoved });
             }
-
-            affectedCells.push({ x: nx, y: ny });
           }
         }
       }
     }
 
     // Recalculate support for all affected cells to ensure consistency
+    const affectedCells: Array<{ x: number; y: number }> = [];
+    for (const { x: dx, y: dy } of deactivated) {
+      affectedCells.push({ x: dx, y: dy });
+      // Add neighboring cells that might be affected
+      const directions = [
+        { dx: 0, dy: -1 }, // north
+        { dx: 1, dy: 0 }, // east
+        { dx: 0, dy: 1 }, // south
+        { dx: -1, dy: 0 }, // west
+      ];
+      for (const { dx: ndx, dy: ndy } of directions) {
+        const nx = dx + ndx;
+        const ny = dy + ndy;
+        if (nx >= 0 && nx < this.gridWidth && ny >= 0 && ny < this.gridHeight) {
+          affectedCells.push({ x: nx, y: ny });
+        }
+      }
+    }
     this.recalculateSupportForAffectedCells(affectedCells);
 
-    if (totalPropagated > 0) {
-      console.log(
-        `🌊 Propagation affected ${totalPropagated} cells, removed ${deactivated.length} tiles total`
-      );
-    }
+    console.log(`🌊 Propagation removed ${deactivated.length} tiles total`);
     return { contradiction, deactivated };
   }
 
