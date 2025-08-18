@@ -121,7 +121,7 @@ export class WaveFunctionCollapse {
     console.log(`Available tiles: ${this.tiles.map((t) => t.id).join(", ")}`);
 
     try {
-      const result = yield* this.generateRecursive(0, new Map());
+      const result = yield* this.generateRecursive(0);
       if (result === null) {
         console.log(`[Failure] No valid arrangement possible`);
         return null;
@@ -139,12 +139,10 @@ export class WaveFunctionCollapse {
   /**
    * Recursive generator function that handles the wave function collapse algorithm
    * @param iteration - Current iteration number
-   * @param triedPossibilities - Map of cell keys to sets of tried tile IDs
    * @returns Generator that yields partial results and returns the final arrangement
    */
   private *generateRecursive(
-    iteration: number,
-    triedPossibilities: Map<string, Set<string>>
+    iteration: number
   ): Generator<PartialResult, string[][] | null, unknown> {
     iteration++;
 
@@ -159,9 +157,9 @@ export class WaveFunctionCollapse {
       );
     }
 
-    // Find the cell with the fewest possibilities (lowest entropy)
-    const cell = this.findLowestEntropyCell();
-    if (!cell) {
+    // Get sorted list of cells by entropy (lowest first)
+    const cells = this.getSortedCellsByEntropy();
+    if (cells.length === 0) {
       // All cells are collapsed, we're done!
       console.log(
         `[Success] All cells collapsed after ${iteration} iterations`
@@ -177,108 +175,85 @@ export class WaveFunctionCollapse {
       return result;
     }
 
-    console.log(
-      `[Decision] Selected cell (${cell.x}, ${cell.y}) with ${cell.entropy} possibilities`
-    );
-
-    const cellKey = `${cell.x},${cell.y}`;
-    const availablePossibilities = Array.from(
-      this.possibilities[cell.y][cell.x]
-    );
-
-    // Get or create the set of tried possibilities for this cell
-    if (!triedPossibilities.has(cellKey)) {
-      triedPossibilities.set(cellKey, new Set());
-    }
-    const triedForCell = triedPossibilities.get(cellKey)!;
-
-    // Find a possibility that hasn't been tried yet
-    const untriedPossibilities = availablePossibilities.filter(
-      (tile) => !triedForCell.has(tile)
-    );
-
-    if (untriedPossibilities.length === 0) {
-      // All possibilities for this cell have been tried, need to backtrack
+    // Loop through each cell in order of entropy
+    for (const cell of cells) {
       console.log(
-        `[Backtrack] All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
+        `[Decision] Trying cell (${cell.x}, ${cell.y}) with ${cell.entropy} possibilities`
       );
 
-      // Yield partial result before backtracking
-      const partialResult = this.getPartialResult(iteration);
-      yield partialResult;
-
-      // Return null to signal that this branch failed
-      return null;
-    }
-
-    // Use deterministic selection based on seed and iteration
-    const hash = this.hashPosition(cell.x, cell.y, iteration);
-    const index = hash % untriedPossibilities.length;
-    const tileToTry = untriedPossibilities[index];
-    triedForCell.add(tileToTry);
-
-    console.log(
-      `[Try] Attempting tile ${tileToTry} at cell (${cell.x}, ${cell.y}) (${triedForCell.size}/${availablePossibilities.length} tried)`
-    );
-
-    // Store the current state before attempting collapse
-    const stateBeforeCollapse = this.copyPossibilities();
-
-    try {
-      // Manually collapse the cell to the chosen tile
-      this.possibilities[cell.y][cell.x].clear();
-      this.possibilities[cell.y][cell.x].add(tileToTry);
-
-      // Propagate the changes to neighboring cells
-      this.propagate(cell.x, cell.y);
-
-      // If we reach here, the collapse was successful
-      console.log(
-        `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+      const availablePossibilities = Array.from(
+        this.possibilities[cell.y][cell.x]
       );
 
-      // Recursively continue with the next cell
-      const result = yield* this.generateRecursive(
-        iteration,
-        triedPossibilities
+      // Shuffle the possibilities based on seed and cell position
+      const shuffledPossibilities = this.shuffleArray(
+        availablePossibilities,
+        cell.x,
+        cell.y
       );
 
-      if (result !== null) {
-        // Success! Return the result
-        return result;
-      } else {
-        // This branch failed, restore state and try next possibility
+      // Loop through each possibility for this cell
+      for (const tileToTry of shuffledPossibilities) {
         console.log(
-          `[Backtrack] Branch failed, restoring state and trying next possibility`
+          `[Try] Attempting tile ${tileToTry} at cell (${cell.x}, ${cell.y})`
         );
-        this.restorePossibilities(stateBeforeCollapse);
 
-        // Yield partial result after backtracking
-        const partialResult = this.getPartialResult(iteration);
-        yield partialResult;
+        // Store the current state before attempting collapse
+        const stateBeforeCollapse = this.copyPossibilities();
 
-        // Continue with next iteration (try next possibility)
-        return yield* this.generateRecursive(iteration, triedPossibilities);
+        try {
+          // Manually collapse the cell to the chosen tile
+          this.possibilities[cell.y][cell.x].clear();
+          this.possibilities[cell.y][cell.x].add(tileToTry);
+
+          // Propagate the changes to neighboring cells
+          this.propagate(cell.x, cell.y);
+
+          // If we reach here, the collapse was successful
+          console.log(
+            `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+          );
+
+          // Recursively continue with the next iteration
+          const result = yield* this.generateRecursive(iteration);
+
+          if (result !== null) {
+            // Success! Return the result
+            return result;
+          } else {
+            // This branch failed, restore state and try next possibility
+            console.log(
+              `[Backtrack] Branch failed for cell (${cell.x}, ${cell.y}), restoring state and trying next possibility`
+            );
+            this.restorePossibilities(stateBeforeCollapse);
+
+            // Yield partial result after backtracking
+            const partialResult = this.getPartialResult(iteration);
+            yield partialResult;
+          }
+        } catch (error) {
+          // Contradiction detected, restore the previous state
+          console.log(
+            `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${
+              cell.y
+            }) caused contradiction: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+
+          // Yield partial result after contradiction
+          const partialResult = this.getPartialResult(iteration);
+          yield partialResult;
+
+          this.restorePossibilities(stateBeforeCollapse);
+          // Continue to next possibility in the inner loop
+        }
       }
-    } catch (error) {
-      // Contradiction detected, restore the previous state
-      console.log(
-        `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${
-          cell.y
-        }) caused contradiction: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-
-      // Yield partial result after contradiction
-      const partialResult = this.getPartialResult(iteration);
-      yield partialResult;
-
-      this.restorePossibilities(stateBeforeCollapse);
-
-      // Continue with next iteration (try next possibility)
-      return yield* this.generateRecursive(iteration, triedPossibilities);
     }
+
+    // If we get here, all cells and all possibilities have been exhausted
+    console.log(`[Failure] All possibilities exhausted for all cells`);
+    return null;
   }
 
   /**
@@ -368,6 +343,41 @@ export class WaveFunctionCollapse {
       }
     }
     return count;
+  }
+
+  /**
+   * Get all uncollapsed cells sorted by entropy (lowest first) and shuffled within entropy groups
+   */
+  private getSortedCellsByEntropy(): Array<{
+    x: number;
+    y: number;
+    entropy: number;
+  }> {
+    const cells: Array<{ x: number; y: number; entropy: number }> = [];
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (!this.isCollapsed(x, y)) {
+          const entropy = this.possibilities[y][x].size;
+          if (entropy === 0) {
+            // Contradiction: cell has no possibilities
+            throw new Error(`Cell (${x}, ${y}) has no possibilities`);
+          }
+          cells.push({ x, y, entropy });
+        }
+      }
+    }
+
+    // Sort by entropy (lowest first), then shuffle within entropy groups
+    return cells.sort((a, b) => {
+      if (a.entropy !== b.entropy) {
+        return a.entropy - b.entropy;
+      }
+      // If entropy is the same, shuffle based on seed and position
+      const hashA = this.hashPosition(a.x, a.y, 0);
+      const hashB = this.hashPosition(b.x, b.y, 0);
+      return hashA - hashB;
+    });
   }
 
   /**
@@ -612,36 +622,6 @@ export class WaveFunctionCollapse {
     }
   }
 
-  private findLowestEntropyCell(): {
-    x: number;
-    y: number;
-    entropy: number;
-  } | null {
-    let minEntropy = Infinity;
-    let minCell: { x: number; y: number; entropy: number } | null = null;
-
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        if (this.isCollapsed(x, y)) {
-          continue; // Already collapsed
-        }
-
-        const entropy = this.possibilities[y][x].size;
-        if (entropy === 0) {
-          // Contradiction: cell has no possibilities
-          throw new Error(`Cell (${x}, ${y}) has no possibilities`);
-        }
-
-        if (entropy < minEntropy) {
-          minEntropy = entropy;
-          minCell = { x, y, entropy };
-        }
-      }
-    }
-
-    return minCell;
-  }
-
   /**
    * Generate a deterministic hash for a position based on coordinates, seed, and iteration
    */
@@ -653,6 +633,24 @@ export class WaveFunctionCollapse {
     hash = (hash << 5) - hash + iteration;
     hash = hash & hash; // Convert to 32-bit integer
     return Math.abs(hash);
+  }
+
+  /**
+   * Shuffle an array deterministically based on seed and cell position
+   */
+  private shuffleArray<T>(array: T[], x: number, y: number): T[] {
+    const shuffled = [...array];
+
+    // Use Fisher-Yates shuffle with deterministic random numbers
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const hash = this.hashPosition(x, y, i);
+      const j = hash % (i + 1);
+
+      // Swap elements
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    return shuffled;
   }
 
   private propagate(startX: number, startY: number): void {

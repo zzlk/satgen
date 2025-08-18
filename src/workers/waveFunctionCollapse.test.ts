@@ -373,14 +373,14 @@ describe("WaveFunctionCollapse", () => {
       // Create a scenario where one cell becomes more constrained
       const wfc = new WaveFunctionCollapse(constrainedTiles, 2, 2);
 
-      // Mock the findLowestEntropyCell method to track calls
-      const originalMethod = wfc["findLowestEntropyCell"].bind(wfc);
+      // Mock the getSortedCellsByEntropy method to track calls
+      const originalMethod = wfc["getSortedCellsByEntropy"].bind(wfc);
       const entropyCalls: Array<{ x: number; y: number; entropy: number }> = [];
 
-      wfc["findLowestEntropyCell"] = function () {
+      wfc["getSortedCellsByEntropy"] = function () {
         const result = originalMethod();
-        if (result) {
-          entropyCalls.push(result);
+        if (result.length > 0) {
+          entropyCalls.push(...result);
         }
         return result;
       };
@@ -472,8 +472,36 @@ describe("WaveFunctionCollapse", () => {
     });
 
     test("should generate different results with different seeds", () => {
-      const wfc1 = new WaveFunctionCollapse(simpleTiles, 3, 3, 42);
-      const wfc2 = new WaveFunctionCollapse(simpleTiles, 3, 3, 123);
+      // Use tiles that are more likely to produce different arrangements
+      const variedTiles: TileData[] = [
+        {
+          id: "grass",
+          dataUrl: "grass.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["grass", "road"],
+            east: ["grass", "road"],
+            south: ["grass", "road"],
+            west: ["grass", "road"],
+          },
+        },
+        {
+          id: "road",
+          dataUrl: "road.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["grass", "road"],
+            east: ["grass", "road"],
+            south: ["grass", "road"],
+            west: ["grass", "road"],
+          },
+        },
+      ];
+
+      const wfc1 = new WaveFunctionCollapse(variedTiles, 3, 3, 42);
+      const wfc2 = new WaveFunctionCollapse(variedTiles, 3, 3, 123);
 
       const result1 = wfc1.generate();
       const result2 = wfc2.generate();
@@ -481,8 +509,14 @@ describe("WaveFunctionCollapse", () => {
       expect(result1).not.toBeNull();
       expect(result2).not.toBeNull();
 
-      // With different seeds, results should be different
+      // With different seeds, results should be different due to shuffling
       expect(result1).not.toEqual(result2);
+
+      // Validate that both results are valid
+      const validation1 = wfc1.validateArrangement(result1!);
+      const validation2 = wfc2.validateArrangement(result2!);
+      expect(validation1.isValid).toBe(true);
+      expect(validation2.isValid).toBe(true);
     });
 
     test("should return correct seed value", () => {
