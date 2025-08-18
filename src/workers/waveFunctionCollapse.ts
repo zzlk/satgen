@@ -107,43 +107,117 @@ export class WaveFunctionCollapse {
     );
     console.log(`Available tiles: ${this.tiles.map((t) => t.id).join(", ")}`);
 
-    let attempts = 0;
-    const maxAttempts = 100;
+    try {
+      let iterations = 0;
+      const maxIterations = this.width * this.height * 10;
 
-    while (attempts < maxAttempts) {
-      attempts++;
-      console.log(`Attempt ${attempts}/${maxAttempts}`);
+      // Stack to store state snapshots for backtracking
+      const stateStack: Array<{
+        possibilities: Set<string>[][];
+        triedPossibilities: Map<string, Set<string>>;
+      }> = [];
 
-      // Reset the grid
-      this.resetGrid();
+      while (iterations < maxIterations) {
+        iterations++;
 
-      try {
-        const result = this.runGeneration();
-        if (result) {
-          console.log(
-            `Successfully generated arrangement on attempt ${attempts}`
-          );
-          return result;
+        // Find the cell with the fewest possibilities (lowest entropy)
+        const cell = this.findLowestEntropyCell();
+        if (!cell) {
+          // All cells are collapsed, we're done!
+          return this.getResult();
         }
-      } catch (error) {
-        console.log(`Attempt ${attempts} failed: ${error}`);
+
+        const cellKey = `${cell.x},${cell.y}`;
+        const availablePossibilities = Array.from(
+          this.possibilities[cell.y][cell.x]
+        );
+
+        // Get the current tried possibilities from the top of the stack, or create new
+        let currentTriedPossibilities: Map<string, Set<string>>;
+        if (stateStack.length > 0) {
+          currentTriedPossibilities = new Map(
+            stateStack[stateStack.length - 1].triedPossibilities
+          );
+        } else {
+          currentTriedPossibilities = new Map();
+        }
+
+        // Get or create the set of tried possibilities for this cell
+        if (!currentTriedPossibilities.has(cellKey)) {
+          currentTriedPossibilities.set(cellKey, new Set());
+        }
+        const triedForCell = currentTriedPossibilities.get(cellKey)!;
+
+        // Find a possibility that hasn't been tried yet
+        const untriedPossibilities = availablePossibilities.filter(
+          (tile) => !triedForCell.has(tile)
+        );
+
+        if (untriedPossibilities.length === 0) {
+          // All possibilities for this cell have been tried, need to backtrack
+          console.log(
+            `All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
+          );
+
+          if (stateStack.length === 0) {
+            throw new Error(`No valid arrangement possible`);
+          }
+
+          // Pop the previous state and restore it
+          const previousState = stateStack.pop()!;
+          this.restorePossibilities(previousState.possibilities);
+          currentTriedPossibilities = previousState.triedPossibilities;
+          continue;
+        }
+
+        // Use deterministic selection based on seed and iteration
+        const hash = this.hashPosition(cell.x, cell.y, iterations);
+        const index = hash % untriedPossibilities.length;
+        const tileToTry = untriedPossibilities[index];
+        triedForCell.add(tileToTry);
+
+        // Store the current state before attempting collapse
+        const stateBeforeCollapse = this.copyPossibilities();
+
+        try {
+          // Manually collapse the cell to the chosen tile
+          this.possibilities[cell.y][cell.x].clear();
+          this.possibilities[cell.y][cell.x].add(tileToTry);
+
+          console.log(
+            `Trying tile ${tileToTry} at cell (${cell.x}, ${cell.y})`
+          );
+
+          // Propagate the changes to neighboring cells
+          this.propagate(cell.x, cell.y);
+
+          // If we reach here, the collapse was successful
+          console.log(
+            `Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+          );
+
+          // Push the current state onto the stack for potential backtracking
+          stateStack.push({
+            possibilities: stateBeforeCollapse,
+            triedPossibilities: currentTriedPossibilities,
+          });
+        } catch (error) {
+          // Contradiction detected, restore the previous state
+          console.log(
+            `Contradiction detected, restoring state and trying next possibility`
+          );
+          this.restorePossibilities(stateBeforeCollapse);
+          continue; // Try the next iteration with the restored state
+        }
       }
-    }
 
-    console.log(`Failed to generate arrangement after ${maxAttempts} attempts`);
-    return null;
-  }
-
-  private resetGrid(): void {
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        this.possibilities[y][x] = new Set(this.tiles.map((tile) => tile.id));
-      }
-    }
-
-    // Perform initial constraint propagation after reset only if there are tiles
-    if (this.tiles.length > 0 && this.width > 0 && this.height > 0) {
-      this.performInitialPropagation();
+      throw new Error(`Max iterations reached`);
+    } catch (error) {
+      console.log(`Generation failed: ${error}`);
+      console.log(
+        `Failed to generate arrangement - no valid arrangement possible`
+      );
+      return null;
     }
   }
 
@@ -393,111 +467,6 @@ export class WaveFunctionCollapse {
         );
       }
     }
-  }
-
-  private runGeneration(): string[][] | null {
-    let iterations = 0;
-    const maxIterations = this.width * this.height * 10;
-
-    // Stack to store state snapshots for backtracking
-    const stateStack: Array<{
-      possibilities: Set<string>[][];
-      triedPossibilities: Map<string, Set<string>>;
-    }> = [];
-
-    while (iterations < maxIterations) {
-      iterations++;
-
-      // Find the cell with the fewest possibilities (lowest entropy)
-      const cell = this.findLowestEntropyCell();
-      if (!cell) {
-        // All cells are collapsed, we're done!
-        return this.getResult();
-      }
-
-      const cellKey = `${cell.x},${cell.y}`;
-      const availablePossibilities = Array.from(
-        this.possibilities[cell.y][cell.x]
-      );
-
-      // Get the current tried possibilities from the top of the stack, or create new
-      let currentTriedPossibilities: Map<string, Set<string>>;
-      if (stateStack.length > 0) {
-        currentTriedPossibilities = new Map(
-          stateStack[stateStack.length - 1].triedPossibilities
-        );
-      } else {
-        currentTriedPossibilities = new Map();
-      }
-
-      // Get or create the set of tried possibilities for this cell
-      if (!currentTriedPossibilities.has(cellKey)) {
-        currentTriedPossibilities.set(cellKey, new Set());
-      }
-      const triedForCell = currentTriedPossibilities.get(cellKey)!;
-
-      // Find a possibility that hasn't been tried yet
-      const untriedPossibilities = availablePossibilities.filter(
-        (tile) => !triedForCell.has(tile)
-      );
-
-      if (untriedPossibilities.length === 0) {
-        // All possibilities for this cell have been tried, need to backtrack
-        console.log(
-          `All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
-        );
-
-        if (stateStack.length === 0) {
-          throw new Error(`No valid arrangement possible`);
-        }
-
-        // Pop the previous state and restore it
-        const previousState = stateStack.pop()!;
-        this.restorePossibilities(previousState.possibilities);
-        currentTriedPossibilities = previousState.triedPossibilities;
-        continue;
-      }
-
-      // Use deterministic selection based on seed and iteration
-      const hash = this.hashPosition(cell.x, cell.y, iterations);
-      const index = hash % untriedPossibilities.length;
-      const tileToTry = untriedPossibilities[index];
-      triedForCell.add(tileToTry);
-
-      // Store the current state before attempting collapse
-      const stateBeforeCollapse = this.copyPossibilities();
-
-      try {
-        // Manually collapse the cell to the chosen tile
-        this.possibilities[cell.y][cell.x].clear();
-        this.possibilities[cell.y][cell.x].add(tileToTry);
-
-        console.log(`Trying tile ${tileToTry} at cell (${cell.x}, ${cell.y})`);
-
-        // Propagate the changes to neighboring cells
-        this.propagate(cell.x, cell.y);
-
-        // If we reach here, the collapse was successful
-        console.log(
-          `Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
-        );
-
-        // Push the current state onto the stack for potential backtracking
-        stateStack.push({
-          possibilities: stateBeforeCollapse,
-          triedPossibilities: currentTriedPossibilities,
-        });
-      } catch (error) {
-        // Contradiction detected, restore the previous state
-        console.log(
-          `Contradiction detected, restoring state and trying next possibility`
-        );
-        this.restorePossibilities(stateBeforeCollapse);
-        continue; // Try the next iteration with the restored state
-      }
-    }
-
-    throw new Error(`Max iterations reached`);
   }
 
   private findLowestEntropyCell(): {
