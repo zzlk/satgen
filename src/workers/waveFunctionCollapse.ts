@@ -36,7 +36,6 @@ export class WaveFunctionCollapse {
   private tiles: TileData[];
   private width: number;
   private height: number;
-  private grid: (string | null)[][];
   private possibilities: Set<string>[][];
   private seed: number;
 
@@ -81,16 +80,13 @@ export class WaveFunctionCollapse {
     this.tiles = tiles;
     this.width = width;
     this.height = height;
-    this.grid = [];
     this.possibilities = [];
     this.seed = seed;
 
-    // Initialize grid and possibilities
+    // Initialize possibilities
     for (let y = 0; y < height; y++) {
-      this.grid[y] = [];
       this.possibilities[y] = [];
       for (let x = 0; x < width; x++) {
-        this.grid[y][x] = null;
         this.possibilities[y][x] = new Set(tiles.map((tile) => tile.id));
       }
     }
@@ -141,7 +137,6 @@ export class WaveFunctionCollapse {
   private resetGrid(): void {
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        this.grid[y][x] = null;
         this.possibilities[y][x] = new Set(this.tiles.map((tile) => tile.id));
       }
     }
@@ -157,6 +152,24 @@ export class WaveFunctionCollapse {
    */
   private isInBounds(x: number, y: number): boolean {
     return x >= 0 && x < this.width && y >= 0 && y < this.height;
+  }
+
+  /**
+   * Check if a cell is collapsed (has exactly one possibility)
+   */
+  private isCollapsed(x: number, y: number): boolean {
+    return this.possibilities[y][x].size === 1;
+  }
+
+  /**
+   * Get the tile ID from a collapsed cell
+   * @throws Error if the cell is not collapsed
+   */
+  private getCollapsedTile(x: number, y: number): string {
+    if (!this.isCollapsed(x, y)) {
+      throw new Error(`Cell (${x}, ${y}) is not collapsed`);
+    }
+    return Array.from(this.possibilities[y][x])[0];
   }
 
   /**
@@ -226,7 +239,7 @@ export class WaveFunctionCollapse {
     }
 
     // Skip if neighbor is already collapsed
-    if (this.grid[ny][nx] !== null) {
+    if (this.isCollapsed(nx, ny)) {
       return false;
     }
 
@@ -392,7 +405,7 @@ export class WaveFunctionCollapse {
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        if (this.grid[y][x] !== null) {
+        if (this.isCollapsed(x, y)) {
           continue; // Already collapsed
         }
 
@@ -429,7 +442,6 @@ export class WaveFunctionCollapse {
     const chosenTile = possibilities[index];
 
     // Collapse the cell to the chosen tile
-    this.grid[y][x] = chosenTile;
     this.possibilities[y][x].clear();
     this.possibilities[y][x].add(chosenTile);
 
@@ -463,7 +475,9 @@ export class WaveFunctionCollapse {
       }
       visited.add(key);
 
-      const currentTile = this.grid[y][x];
+      const currentTile = this.isCollapsed(x, y)
+        ? this.getCollapsedTile(x, y)
+        : null;
       if (!currentTile) {
         continue; // Cell not collapsed yet
       }
@@ -479,7 +493,7 @@ export class WaveFunctionCollapse {
         }
 
         // Skip if neighbor is already collapsed
-        if (this.grid[ny][nx] !== null) {
+        if (this.isCollapsed(nx, ny)) {
           continue;
         }
 
@@ -507,11 +521,10 @@ export class WaveFunctionCollapse {
     for (let y = 0; y < this.height; y++) {
       result[y] = [];
       for (let x = 0; x < this.width; x++) {
-        const tile = this.grid[y][x];
-        if (!tile) {
+        if (!this.isCollapsed(x, y)) {
           throw new Error(`Cell (${x}, ${y}) is not collapsed in final result`);
         }
-        result[y][x] = tile;
+        result[y][x] = this.getCollapsedTile(x, y);
       }
     }
 

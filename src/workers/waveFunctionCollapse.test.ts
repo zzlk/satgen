@@ -405,7 +405,6 @@ describe("WaveFunctionCollapse", () => {
       const initialPossibilities = wfc["possibilities"][0][0].size;
 
       // Force collapse a cell and check propagation
-      wfc["grid"][0][0] = "road";
       wfc["possibilities"][0][0].clear();
       wfc["possibilities"][0][0].add("road");
 
