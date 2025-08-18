@@ -132,10 +132,25 @@ export class WaveFunctionCollapse {
       while (true) {
         iterations++;
 
+        // Log progress every 100 iterations
+        if (iterations % 100 === 0) {
+          const totalCells = this.width * this.height;
+          const collapsedCells = this.countCollapsedCells();
+          const stackSize = stateStack.length;
+          console.log(
+            `[Progress] Iteration ${iterations}: ${collapsedCells}/${totalCells} cells collapsed (${Math.round(
+              (collapsedCells / totalCells) * 100
+            )}%), stack size: ${stackSize}`
+          );
+        }
+
         // Find the cell with the fewest possibilities (lowest entropy)
         const cell = this.findLowestEntropyCell();
         if (!cell) {
           // All cells are collapsed, we're done!
+          console.log(
+            `[Success] All cells collapsed after ${iterations} iterations`
+          );
           const result = this.getResult();
           yield {
             arrangement: result,
@@ -146,6 +161,10 @@ export class WaveFunctionCollapse {
           };
           return result;
         }
+
+        console.log(
+          `[Decision] Selected cell (${cell.x}, ${cell.y}) with ${cell.entropy} possibilities`
+        );
 
         const cellKey = `${cell.x},${cell.y}`;
         const availablePossibilities = Array.from(
@@ -176,7 +195,7 @@ export class WaveFunctionCollapse {
         if (untriedPossibilities.length === 0) {
           // All possibilities for this cell have been tried, need to backtrack
           console.log(
-            `All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
+            `[Backtrack] All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking (stack size: ${stateStack.length})`
           );
 
           // Yield partial result before backtracking
@@ -184,11 +203,17 @@ export class WaveFunctionCollapse {
           yield partialResult;
 
           if (stateStack.length === 0) {
+            console.log(
+              `[Failure] No more states to backtrack to - no valid arrangement possible`
+            );
             throw new Error(`No valid arrangement possible`);
           }
 
           // Pop the previous state and restore it
           const previousState = stateStack.pop()!;
+          console.log(
+            `[Backtrack] Restoring previous state, stack size now: ${stateStack.length}`
+          );
           this.restorePossibilities(previousState.possibilities);
           currentTriedPossibilities = previousState.triedPossibilities;
           continue;
@@ -200,6 +225,10 @@ export class WaveFunctionCollapse {
         const tileToTry = untriedPossibilities[index];
         triedForCell.add(tileToTry);
 
+        console.log(
+          `[Try] Attempting tile ${tileToTry} at cell (${cell.x}, ${cell.y}) (${triedForCell.size}/${availablePossibilities.length} tried)`
+        );
+
         // Store the current state before attempting collapse
         const stateBeforeCollapse = this.copyPossibilities();
 
@@ -208,16 +237,12 @@ export class WaveFunctionCollapse {
           this.possibilities[cell.y][cell.x].clear();
           this.possibilities[cell.y][cell.x].add(tileToTry);
 
-          console.log(
-            `Trying tile ${tileToTry} at cell (${cell.x}, ${cell.y})`
-          );
-
           // Propagate the changes to neighboring cells
           this.propagate(cell.x, cell.y);
 
           // If we reach here, the collapse was successful
           console.log(
-            `Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+            `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
           );
 
           // Push the current state onto the stack for potential backtracking
@@ -225,10 +250,17 @@ export class WaveFunctionCollapse {
             possibilities: stateBeforeCollapse,
             triedPossibilities: currentTriedPossibilities,
           });
+          console.log(
+            `[State] Pushed state to stack, stack size: ${stateStack.length}`
+          );
         } catch (error) {
           // Contradiction detected, restore the previous state
           console.log(
-            `Contradiction detected, restoring state and trying next possibility`
+            `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${
+              cell.y
+            }) caused contradiction: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
           );
 
           // Yield partial result after contradiction
@@ -320,6 +352,21 @@ export class WaveFunctionCollapse {
    */
   private isCollapsed(x: number, y: number): boolean {
     return this.possibilities[y][x].size === 1;
+  }
+
+  /**
+   * Count the number of collapsed cells
+   */
+  private countCollapsedCells(): number {
+    let count = 0;
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.isCollapsed(x, y)) {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   /**
@@ -463,6 +510,14 @@ export class WaveFunctionCollapse {
     if (neighborPossibilities.size === 0) {
       throw new Error(
         `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`
+      );
+    }
+
+    // Log if a cell was collapsed during propagation
+    if (tilesToRemove.length > 0 && neighborPossibilities.size === 1) {
+      const collapsedTile = Array.from(neighborPossibilities)[0];
+      console.log(
+        `[Propagate] Cell (${nx}, ${ny}) collapsed to ${collapsedTile} due to constraint propagation`
       );
     }
 
@@ -644,7 +699,7 @@ export class WaveFunctionCollapse {
 
         if (tilesRemoved) {
           console.log(
-            `Removed incompatible tiles from (${nx}, ${ny}) due to ${direction.name} neighbor`
+            `[Propagate] Removed incompatible tiles from (${nx}, ${ny}) due to ${direction.name} neighbor (${currentTile})`
           );
           queue.push({ x: nx, y: ny });
         }
