@@ -9,7 +9,7 @@ import type {
   SynthesisProgress,
   SynthesisAttemptStart,
   SynthesisResult,
-} from "../utils/TileSynthesizer";
+} from "../utils/WaveFunctionCollapseSynthesizer";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -23,6 +23,7 @@ export default function () {
   const [isProcessing, setIsProcessing] = useState(false);
   const [synthesizeWidth, setSynthesizeWidth] = useState<number>(10);
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
+  const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
   const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [synthesisProgress, setSynthesisProgress] =
@@ -137,6 +138,7 @@ export default function () {
       const result = await synthesisCollection.synthesize(
         targetWidth,
         targetHeight,
+        synthesisSeed,
         handleProgressUpdate,
         handleAttemptStart,
         handlePartialResult
@@ -285,8 +287,9 @@ export default function () {
         <div className="synthesis-section">
           <h3 className="synthesis-title">Image Synthesis</h3>
           <p className="synthesis-description">
-            Create a new image by combining tiles randomly. Enter dimensions in
-            tile units.
+            Create a new image using the Wave Function Collapse algorithm. The
+            generation is deterministic - using the same seed will always
+            produce the same result. Enter dimensions in tile units.
           </p>
 
           <div className="synthesis-inputs">
@@ -316,6 +319,38 @@ export default function () {
                 min="1"
                 className="dimension-input"
               />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Seed</label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  type="number"
+                  value={synthesisSeed}
+                  onChange={(e) =>
+                    setSynthesisSeed(parseInt(e.target.value) || 0)
+                  }
+                  className="dimension-input"
+                  title="Seed for deterministic generation. Same seed produces same result."
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSynthesisSeed(Math.floor(Math.random() * 10000))
+                  }
+                  style={{
+                    padding: "8px 12px",
+                    background: "#f0f0f0",
+                    border: "1px solid #ccc",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                  }}
+                  title="Generate random seed"
+                >
+                  🎲
+                </button>
+              </div>
             </div>
 
             <button

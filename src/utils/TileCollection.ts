@@ -1,10 +1,10 @@
 import { Tile } from "./Tile";
-import { TileSynthesizer } from "./TileSynthesizer";
+import { WaveFunctionCollapseSynthesizer } from "./WaveFunctionCollapseSynthesizer";
 import type {
   SynthesisResult,
   SynthesisProgress,
   SynthesisAttemptStart,
-} from "./TileSynthesizer";
+} from "./WaveFunctionCollapseSynthesizer";
 
 export class TileCollection {
   public readonly tiles: Tile[];
@@ -107,6 +107,7 @@ export class TileCollection {
    * Synthesizes a new image by placing compatible tiles based on border information
    * @param targetWidth - Desired width in pixels (must be multiple of tile width)
    * @param targetHeight - Desired height in pixels (must be multiple of tile height)
+   * @param seed - Seed for deterministic generation (default: 0)
    * @param onProgress - Optional callback for progress updates
    * @param onAttemptStart - Optional callback for attempt start updates
    * @param onPartialResult - Optional callback for partial results from failed attempts
@@ -115,14 +116,16 @@ export class TileCollection {
   async synthesize(
     targetWidth: number,
     targetHeight: number,
+    seed: number = 0,
     onProgress?: (progress: SynthesisProgress) => void,
     onAttemptStart?: (attemptStart: SynthesisAttemptStart) => void,
     onPartialResult?: (result: SynthesisResult) => void
   ): Promise<string> {
-    const synthesizer = new TileSynthesizer(this.tiles);
+    const synthesizer = new WaveFunctionCollapseSynthesizer(this.tiles);
     const result: SynthesisResult = await synthesizer.synthesize(
       targetWidth,
       targetHeight,
+      seed,
       onProgress,
       onAttemptStart,
       onPartialResult

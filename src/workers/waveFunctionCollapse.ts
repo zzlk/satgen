@@ -26,6 +26,11 @@ export interface TileData {
  * The algorithm also performs initial constraint propagation during initialization
  * to ensure that all cells start with possibilities that are compatible with their
  * neighbors, which can improve generation success rates and reduce contradictions.
+ *
+ * The code has been refactored to reduce duplication by:
+ * - Using shared direction definitions
+ * - Extracting common utility methods for constraint checking
+ * - Centralizing bounds checking and tile compatibility logic
  */
 export class WaveFunctionCollapse {
   private tiles: TileData[];
@@ -34,6 +39,38 @@ export class WaveFunctionCollapse {
   private grid: (string | null)[][];
   private possibilities: Set<string>[][];
   private seed: number;
+
+  // Shared direction definitions
+  private static readonly DIRECTIONS = [
+    {
+      dx: 0,
+      dy: -1,
+      name: "north",
+      currentBorder: "north" as const,
+      neighborBorder: "south" as const,
+    },
+    {
+      dx: 1,
+      dy: 0,
+      name: "east",
+      currentBorder: "east" as const,
+      neighborBorder: "west" as const,
+    },
+    {
+      dx: 0,
+      dy: 1,
+      name: "south",
+      currentBorder: "south" as const,
+      neighborBorder: "north" as const,
+    },
+    {
+      dx: -1,
+      dy: 0,
+      name: "west",
+      currentBorder: "west" as const,
+      neighborBorder: "east" as const,
+    },
+  ];
 
   constructor(
     tiles: TileData[],
@@ -116,6 +153,121 @@ export class WaveFunctionCollapse {
   }
 
   /**
+   * Check if coordinates are within grid bounds
+   */
+  private isInBounds(x: number, y: number): boolean {
+    return x >= 0 && x < this.width && y >= 0 && y < this.height;
+  }
+
+  /**
+   * Check if two tiles are compatible based on their border constraints
+   */
+  private areTilesCompatible(
+    tile1: TileData,
+    tile2: TileData,
+    tile1Border: keyof TileData["borders"],
+    tile2Border: keyof TileData["borders"]
+  ): boolean {
+    const tile1Allowed = tile1.borders[tile1Border];
+    const tile2Allowed = tile2.borders[tile2Border];
+
+    return tile1Allowed.includes(tile2.id) || tile2Allowed.includes(tile1.id);
+  }
+
+  /**
+   * Get compatible tiles for a given tile and direction
+   */
+  private getCompatibleTiles(
+    currentTile: string,
+    neighborPossibilities: Set<string>,
+    currentBorder: keyof TileData["borders"],
+    neighborBorder: keyof TileData["borders"]
+  ): Set<string> {
+    const currentTileData = this.tiles.find((t) => t.id === currentTile);
+    if (!currentTileData) return new Set();
+
+    const compatibleTiles = new Set<string>();
+
+    for (const neighborTile of Array.from(neighborPossibilities)) {
+      const neighborTileData = this.tiles.find((t) => t.id === neighborTile);
+      if (!neighborTileData) continue;
+
+      if (
+        this.areTilesCompatible(
+          currentTileData,
+          neighborTileData,
+          currentBorder,
+          neighborBorder
+        )
+      ) {
+        compatibleTiles.add(currentTile);
+        break; // Found a compatible neighbor for this tile
+      }
+    }
+
+    return compatibleTiles;
+  }
+
+  /**
+   * Remove incompatible tiles from a cell's possibilities
+   */
+  private removeIncompatibleTiles(
+    x: number,
+    y: number,
+    currentTile: string,
+    direction: (typeof WaveFunctionCollapse.DIRECTIONS)[0]
+  ): boolean {
+    const nx = x + direction.dx;
+    const ny = y + direction.dy;
+
+    // Check bounds
+    if (!this.isInBounds(nx, ny)) {
+      return false;
+    }
+
+    // Skip if neighbor is already collapsed
+    if (this.grid[ny][nx] !== null) {
+      return false;
+    }
+
+    const neighborPossibilities = this.possibilities[ny][nx];
+    const tilesToRemove: string[] = [];
+
+    for (const neighborTile of Array.from(neighborPossibilities)) {
+      const neighborTileData = this.tiles.find((t) => t.id === neighborTile);
+      if (!neighborTileData) {
+        tilesToRemove.push(neighborTile);
+        continue;
+      }
+
+      if (
+        !this.areTilesCompatible(
+          this.tiles.find((t) => t.id === currentTile)!,
+          neighborTileData,
+          direction.currentBorder,
+          direction.neighborBorder
+        )
+      ) {
+        tilesToRemove.push(neighborTile);
+      }
+    }
+
+    // Remove incompatible tiles
+    for (const tileToRemove of tilesToRemove) {
+      neighborPossibilities.delete(tileToRemove);
+    }
+
+    // Check for contradiction
+    if (neighborPossibilities.size === 0) {
+      throw new Error(
+        `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`
+      );
+    }
+
+    return tilesToRemove.length > 0;
+  }
+
+  /**
    * Perform initial constraint propagation to ensure all cells start with
    * possibilities that are compatible with their neighbors
    */
@@ -143,49 +295,12 @@ export class WaveFunctionCollapse {
       visited.add(key);
 
       // Check all four directions for this cell
-      const directions = [
-        {
-          dx: 0,
-          dy: -1,
-          name: "north",
-          currentBorder: "north",
-          neighborBorder: "south",
-        },
-        {
-          dx: 1,
-          dy: 0,
-          name: "east",
-          currentBorder: "east",
-          neighborBorder: "west",
-        },
-        {
-          dx: 0,
-          dy: 1,
-          name: "south",
-          currentBorder: "south",
-          neighborBorder: "north",
-        },
-        {
-          dx: -1,
-          dy: 0,
-          name: "west",
-          currentBorder: "west",
-          neighborBorder: "east",
-        },
-      ];
-
-      for (const {
-        dx,
-        dy,
-        name,
-        currentBorder,
-        neighborBorder,
-      } of directions) {
-        const nx = x + dx;
-        const ny = y + dy;
+      for (const direction of WaveFunctionCollapse.DIRECTIONS) {
+        const nx = x + direction.dx;
+        const ny = y + direction.dy;
 
         // Check bounds
-        if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) {
+        if (!this.isInBounds(nx, ny)) {
           continue;
         }
 
@@ -197,34 +312,15 @@ export class WaveFunctionCollapse {
         const compatibleTiles = new Set<string>();
 
         for (const currentTile of Array.from(currentPossibilities)) {
-          const currentTileData = this.tiles.find((t) => t.id === currentTile);
-          if (!currentTileData) continue;
+          const compatibleTilesForDirection = this.getCompatibleTiles(
+            currentTile,
+            neighborPossibilities,
+            direction.currentBorder,
+            direction.neighborBorder
+          );
 
-          const allowedNeighbors =
-            currentTileData.borders[
-              currentBorder as keyof typeof currentTileData.borders
-            ];
-
-          for (const neighborTile of Array.from(neighborPossibilities)) {
-            const neighborTileData = this.tiles.find(
-              (t) => t.id === neighborTile
-            );
-            if (!neighborTileData) continue;
-
-            const neighborBorderTiles =
-              neighborTileData.borders[
-                neighborBorder as keyof typeof neighborTileData.borders
-              ];
-
-            // Check compatibility
-            const isCompatible =
-              allowedNeighbors.includes(neighborTile) ||
-              neighborBorderTiles.includes(currentTile);
-
-            if (isCompatible) {
-              compatibleTiles.add(currentTile);
-              break; // Found a compatible neighbor for this tile
-            }
+          if (compatibleTilesForDirection.size > 0) {
+            compatibleTiles.add(currentTile);
           }
         }
 
@@ -239,10 +335,10 @@ export class WaveFunctionCollapse {
           }
 
           // Add neighboring cells to queue for further propagation
-          for (const { dx: ndx, dy: ndy } of directions) {
-            const nbx = x + ndx;
-            const nby = y + ndy;
-            if (nbx >= 0 && nbx < this.width && nby >= 0 && nby < this.height) {
+          for (const dir of WaveFunctionCollapse.DIRECTIONS) {
+            const nbx = x + dir.dx;
+            const nby = y + dir.dy;
+            if (this.isInBounds(nbx, nby)) {
               queue.push({ x: nbx, y: nby });
             }
           }
@@ -373,49 +469,12 @@ export class WaveFunctionCollapse {
       }
 
       // Check all four directions
-      const directions = [
-        {
-          dx: 0,
-          dy: -1,
-          name: "north",
-          currentBorder: "north",
-          neighborBorder: "south",
-        },
-        {
-          dx: 1,
-          dy: 0,
-          name: "east",
-          currentBorder: "east",
-          neighborBorder: "west",
-        },
-        {
-          dx: 0,
-          dy: 1,
-          name: "south",
-          currentBorder: "south",
-          neighborBorder: "north",
-        },
-        {
-          dx: -1,
-          dy: 0,
-          name: "west",
-          currentBorder: "west",
-          neighborBorder: "east",
-        },
-      ];
-
-      for (const {
-        dx,
-        dy,
-        name,
-        currentBorder,
-        neighborBorder,
-      } of directions) {
-        const nx = x + dx;
-        const ny = y + dy;
+      for (const direction of WaveFunctionCollapse.DIRECTIONS) {
+        const nx = x + direction.dx;
+        const ny = y + direction.dy;
 
         // Check bounds
-        if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) {
+        if (!this.isInBounds(nx, ny)) {
           continue;
         }
 
@@ -424,66 +483,19 @@ export class WaveFunctionCollapse {
           continue;
         }
 
-        // Get the current tile's border constraints
-        const currentTileData = this.tiles.find((t) => t.id === currentTile);
-        if (!currentTileData) {
-          continue;
-        }
+        // Remove incompatible tiles and check if any were removed
+        const tilesRemoved = this.removeIncompatibleTiles(
+          x,
+          y,
+          currentTile,
+          direction
+        );
 
-        const allowedNeighbors =
-          currentTileData.borders[
-            currentBorder as keyof typeof currentTileData.borders
-          ];
-
-        // Remove incompatible tiles from neighbor's possibilities
-        const neighborPossibilities = this.possibilities[ny][nx];
-        const tilesToRemove: string[] = [];
-
-        for (const neighborTile of Array.from(neighborPossibilities)) {
-          const neighborTileData = this.tiles.find(
-            (t) => t.id === neighborTile
-          );
-          if (!neighborTileData) {
-            tilesToRemove.push(neighborTile);
-            continue;
-          }
-
-          // Check if the neighbor tile's border is compatible with the current tile
-          const neighborBorderTiles =
-            neighborTileData.borders[
-              neighborBorder as keyof typeof neighborTileData.borders
-            ];
-
-          // A tile is compatible if:
-          // 1. The current tile allows this neighbor in its border, OR
-          // 2. The neighbor tile allows the current tile in its border
-          const isCompatible =
-            allowedNeighbors.includes(neighborTile) ||
-            neighborBorderTiles.includes(currentTile);
-
-          if (!isCompatible) {
-            tilesToRemove.push(neighborTile);
-          }
-        }
-
-        // Remove incompatible tiles
-        for (const tileToRemove of tilesToRemove) {
-          neighborPossibilities.delete(tileToRemove);
-        }
-
-        // If we removed any tiles, add this neighbor to the queue for further propagation
-        if (tilesToRemove.length > 0) {
+        if (tilesRemoved) {
           console.log(
-            `Removed ${tilesToRemove.length} incompatible tiles from (${nx}, ${ny}) due to ${name} neighbor`
+            `Removed incompatible tiles from (${nx}, ${ny}) due to ${direction.name} neighbor`
           );
           queue.push({ x: nx, y: ny });
-        }
-
-        // Check for contradiction
-        if (neighborPossibilities.size === 0) {
-          throw new Error(
-            `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`
-          );
         }
       }
     }
@@ -533,48 +545,11 @@ export class WaveFunctionCollapse {
         }
 
         // Check compatibility with neighbors
-        const directions = [
-          {
-            dx: 0,
-            dy: -1,
-            name: "north",
-            currentBorder: "north",
-            neighborBorder: "south",
-          },
-          {
-            dx: 1,
-            dy: 0,
-            name: "east",
-            currentBorder: "east",
-            neighborBorder: "west",
-          },
-          {
-            dx: 0,
-            dy: 1,
-            name: "south",
-            currentBorder: "south",
-            neighborBorder: "north",
-          },
-          {
-            dx: -1,
-            dy: 0,
-            name: "west",
-            currentBorder: "west",
-            neighborBorder: "east",
-          },
-        ];
+        for (const direction of WaveFunctionCollapse.DIRECTIONS) {
+          const nx = x + direction.dx;
+          const ny = y + direction.dy;
 
-        for (const {
-          dx,
-          dy,
-          name,
-          currentBorder,
-          neighborBorder,
-        } of directions) {
-          const nx = x + dx;
-          const ny = y + dy;
-
-          if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) {
+          if (!this.isInBounds(nx, ny)) {
             continue;
           }
 
@@ -588,19 +563,17 @@ export class WaveFunctionCollapse {
             continue;
           }
 
-          // Check compatibility
-          const currentBorderTiles =
-            tile.borders[currentBorder as keyof typeof tile.borders];
-          const neighborBorderTiles =
-            neighbor.borders[neighborBorder as keyof typeof neighbor.borders];
-
-          const isCompatible =
-            currentBorderTiles.includes(neighborId) ||
-            neighborBorderTiles.includes(tileId);
-
-          if (!isCompatible) {
+          // Check compatibility using the utility method
+          if (
+            !this.areTilesCompatible(
+              tile,
+              neighbor,
+              direction.currentBorder,
+              direction.neighborBorder
+            )
+          ) {
             errors.push(
-              `Incompatible tiles at (${x}, ${y}) and (${nx}, ${ny}): ${tileId} and ${neighborId} are not compatible in ${name} direction`
+              `Incompatible tiles at (${x}, ${y}) and (${nx}, ${ny}): ${tileId} and ${neighborId} are not compatible in ${direction.name} direction`
             );
           }
         }
