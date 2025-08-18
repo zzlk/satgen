@@ -309,9 +309,9 @@ export class WaveFunctionCollapse {
           collapsedCells++;
           lastCollapsedCell = { x, y, tile };
         } else {
-          // For uncollapsed cells, use the first possibility as a placeholder
+          // For uncollapsed cells, use a special identifier
           const possibilities = Array.from(this.possibilities[y][x]);
-          arrangement[y][x] = possibilities.length > 0 ? possibilities[0] : "";
+          arrangement[y][x] = possibilities.length > 0 ? "UNCERTAIN" : "EMPTY";
         }
       }
     }

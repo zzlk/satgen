@@ -278,12 +278,46 @@ export default function () {
       for (let gridY = 0; gridY < arrangement.length; gridY++) {
         for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
           const tileId = arrangement[gridY][gridX];
-          if (tileId) {
+          const targetX = gridX * tileWidth;
+          const targetY = gridY * tileHeight;
+
+          if (tileId === "UNCERTAIN") {
+            // Render purple tile for uncertain cells
+            const tileCanvas = document.createElement("canvas");
+            const tileCtx = tileCanvas.getContext("2d");
+
+            if (tileCtx) {
+              tileCanvas.width = tileWidth;
+              tileCanvas.height = tileHeight;
+
+              // Create purple gradient
+              const gradient = tileCtx.createLinearGradient(
+                0,
+                0,
+                tileWidth,
+                tileHeight
+              );
+              gradient.addColorStop(0, "#8B5CF6"); // Purple
+              gradient.addColorStop(1, "#7C3AED"); // Darker purple
+
+              tileCtx.fillStyle = gradient;
+              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+              // Add a question mark or pattern to indicate uncertainty
+              tileCtx.fillStyle = "#FFFFFF";
+              tileCtx.font = `${Math.min(tileWidth, tileHeight) / 3}px Arial`;
+              tileCtx.textAlign = "center";
+              tileCtx.textBaseline = "middle";
+              tileCtx.fillText("?", tileWidth / 2, tileHeight / 2);
+
+              ctx.drawImage(tileCanvas, targetX, targetY);
+            }
+          } else if (tileId === "EMPTY") {
+            // Render transparent/empty tile
+            // Do nothing - leave it transparent
+          } else if (tileId) {
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
-              const targetX = gridX * tileWidth;
-              const targetY = gridY * tileHeight;
-
               const tileCanvas = document.createElement("canvas");
               const tileCtx = tileCanvas.getContext("2d");
 
@@ -342,12 +376,46 @@ export default function () {
       for (let gridY = 0; gridY < arrangement.length; gridY++) {
         for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
           const tileId = arrangement[gridY][gridX];
-          if (tileId) {
+          const targetX = gridX * tileWidth;
+          const targetY = gridY * tileHeight;
+
+          if (tileId === "UNCERTAIN") {
+            // Render purple tile for uncertain cells
+            const tileCanvas = document.createElement("canvas");
+            const tileCtx = tileCanvas.getContext("2d");
+
+            if (tileCtx) {
+              tileCanvas.width = tileWidth;
+              tileCanvas.height = tileHeight;
+
+              // Create purple gradient
+              const gradient = tileCtx.createLinearGradient(
+                0,
+                0,
+                tileWidth,
+                tileHeight
+              );
+              gradient.addColorStop(0, "#8B5CF6"); // Purple
+              gradient.addColorStop(1, "#7C3AED"); // Darker purple
+
+              tileCtx.fillStyle = gradient;
+              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+              // Add a question mark or pattern to indicate uncertainty
+              tileCtx.fillStyle = "#FFFFFF";
+              tileCtx.font = `${Math.min(tileWidth, tileHeight) / 3}px Arial`;
+              tileCtx.textAlign = "center";
+              tileCtx.textBaseline = "middle";
+              tileCtx.fillText("?", tileWidth / 2, tileHeight / 2);
+
+              ctx.drawImage(tileCanvas, targetX, targetY);
+            }
+          } else if (tileId === "EMPTY") {
+            // Render transparent/empty tile
+            // Do nothing - leave it transparent
+          } else if (tileId) {
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
-              const targetX = gridX * tileWidth;
-              const targetY = gridY * tileHeight;
-
               const tileCanvas = document.createElement("canvas");
               const tileCtx = tileCanvas.getContext("2d");
 
