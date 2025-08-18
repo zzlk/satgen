@@ -109,7 +109,7 @@ export class WaveFunctionCollapse {
 
     try {
       let iterations = 0;
-      const maxIterations = this.width * this.height * 10;
+      const maxIterations = this.width * this.height * 999999999;
 
       // Stack to store state snapshots for backtracking
       const stateStack: Array<{
