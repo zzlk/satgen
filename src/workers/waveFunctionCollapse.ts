@@ -173,6 +173,34 @@ export class WaveFunctionCollapse {
   }
 
   /**
+   * Create a deep copy of the current possibilities state
+   */
+  private copyPossibilities(): Set<string>[][] {
+    const copy: Set<string>[][] = [];
+    for (let y = 0; y < this.height; y++) {
+      copy[y] = [];
+      for (let x = 0; x < this.width; x++) {
+        copy[y][x] = new Set(this.possibilities[y][x]);
+      }
+    }
+    return copy;
+  }
+
+  /**
+   * Restore the possibilities state from a copy
+   */
+  private restorePossibilities(copy: Set<string>[][]): void {
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        this.possibilities[y][x].clear();
+        for (const tile of Array.from(copy[y][x])) {
+          this.possibilities[y][x].add(tile);
+        }
+      }
+    }
+  }
+
+  /**
    * Check if two tiles are compatible based on their border constraints
    */
   private areTilesCompatible(
@@ -371,6 +399,12 @@ export class WaveFunctionCollapse {
     let iterations = 0;
     const maxIterations = this.width * this.height * 10;
 
+    // Stack to store state snapshots for backtracking
+    const stateStack: Array<{
+      possibilities: Set<string>[][];
+      triedPossibilities: Map<string, Set<string>>;
+    }> = [];
+
     while (iterations < maxIterations) {
       iterations++;
 
@@ -381,15 +415,86 @@ export class WaveFunctionCollapse {
         return this.getResult();
       }
 
-      // Collapse the cell by choosing a deterministic tile from its possibilities
-      const success = this.collapseCell(cell.x, cell.y, iterations);
-      if (!success) {
-        // Contradiction detected, this attempt failed
-        throw new Error(`Contradiction at (${cell.x}, ${cell.y})`);
+      const cellKey = `${cell.x},${cell.y}`;
+      const availablePossibilities = Array.from(
+        this.possibilities[cell.y][cell.x]
+      );
+
+      // Get the current tried possibilities from the top of the stack, or create new
+      let currentTriedPossibilities: Map<string, Set<string>>;
+      if (stateStack.length > 0) {
+        currentTriedPossibilities = new Map(
+          stateStack[stateStack.length - 1].triedPossibilities
+        );
+      } else {
+        currentTriedPossibilities = new Map();
       }
 
-      // Propagate the changes to neighboring cells
-      this.propagate(cell.x, cell.y);
+      // Get or create the set of tried possibilities for this cell
+      if (!currentTriedPossibilities.has(cellKey)) {
+        currentTriedPossibilities.set(cellKey, new Set());
+      }
+      const triedForCell = currentTriedPossibilities.get(cellKey)!;
+
+      // Find a possibility that hasn't been tried yet
+      const untriedPossibilities = availablePossibilities.filter(
+        (tile) => !triedForCell.has(tile)
+      );
+
+      if (untriedPossibilities.length === 0) {
+        // All possibilities for this cell have been tried, need to backtrack
+        console.log(
+          `All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
+        );
+
+        if (stateStack.length === 0) {
+          throw new Error(`No valid arrangement possible`);
+        }
+
+        // Pop the previous state and restore it
+        const previousState = stateStack.pop()!;
+        this.restorePossibilities(previousState.possibilities);
+        currentTriedPossibilities = previousState.triedPossibilities;
+        continue;
+      }
+
+      // Use deterministic selection based on seed and iteration
+      const hash = this.hashPosition(cell.x, cell.y, iterations);
+      const index = hash % untriedPossibilities.length;
+      const tileToTry = untriedPossibilities[index];
+      triedForCell.add(tileToTry);
+
+      // Store the current state before attempting collapse
+      const stateBeforeCollapse = this.copyPossibilities();
+
+      try {
+        // Manually collapse the cell to the chosen tile
+        this.possibilities[cell.y][cell.x].clear();
+        this.possibilities[cell.y][cell.x].add(tileToTry);
+
+        console.log(`Trying tile ${tileToTry} at cell (${cell.x}, ${cell.y})`);
+
+        // Propagate the changes to neighboring cells
+        this.propagate(cell.x, cell.y);
+
+        // If we reach here, the collapse was successful
+        console.log(
+          `Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+        );
+
+        // Push the current state onto the stack for potential backtracking
+        stateStack.push({
+          possibilities: stateBeforeCollapse,
+          triedPossibilities: currentTriedPossibilities,
+        });
+      } catch (error) {
+        // Contradiction detected, restore the previous state
+        console.log(
+          `Contradiction detected, restoring state and trying next possibility`
+        );
+        this.restorePossibilities(stateBeforeCollapse);
+        continue; // Try the next iteration with the restored state
+      }
     }
 
     throw new Error(`Max iterations reached`);
@@ -423,30 +528,6 @@ export class WaveFunctionCollapse {
     }
 
     return minCell;
-  }
-
-  private collapseCell(x: number, y: number, iteration: number): boolean {
-    const possibilities = Array.from(this.possibilities[y][x]);
-
-    if (possibilities.length === 0) {
-      return false; // No possibilities to choose from
-    }
-
-    // Sort possibilities for deterministic selection
-    possibilities.sort();
-
-    // Use a deterministic selection based on position, seed, and iteration
-    // This creates a pseudo-random but reproducible selection
-    const hash = this.hashPosition(x, y, iteration);
-    const index = hash % possibilities.length;
-    const chosenTile = possibilities[index];
-
-    // Collapse the cell to the chosen tile
-    this.possibilities[y][x].clear();
-    this.possibilities[y][x].add(chosenTile);
-
-    console.log(`Collapsed cell (${x}, ${y}) to tile: ${chosenTile}`);
-    return true;
   }
 
   /**
