@@ -466,5 +466,122 @@ describe("WaveFunctionCollapse", () => {
       // Should succeed at least once
       expect(successCount).toBeGreaterThan(0);
     });
+
+    test("should be deterministic with same seed", () => {
+      const wfc1 = new WaveFunctionCollapse(simpleTiles, 3, 3, 42);
+      const wfc2 = new WaveFunctionCollapse(simpleTiles, 3, 3, 42);
+
+      const result1 = wfc1.generate();
+      const result2 = wfc2.generate();
+
+      expect(result1).not.toBeNull();
+      expect(result2).not.toBeNull();
+      expect(result1).toEqual(result2);
+    });
+
+    test("should generate different results with different seeds", () => {
+      const wfc1 = new WaveFunctionCollapse(simpleTiles, 3, 3, 42);
+      const wfc2 = new WaveFunctionCollapse(simpleTiles, 3, 3, 123);
+
+      const result1 = wfc1.generate();
+      const result2 = wfc2.generate();
+
+      expect(result1).not.toBeNull();
+      expect(result2).not.toBeNull();
+
+      // With different seeds, results should be different
+      expect(result1).not.toEqual(result2);
+    });
+
+    test("should return correct seed value", () => {
+      const wfc = new WaveFunctionCollapse(simpleTiles, 3, 3, 42);
+      expect(wfc.getSeed()).toBe(42);
+    });
+
+    test("should perform initial constraint propagation", () => {
+      // Create tiles with strict constraints
+      const strictTiles: TileData[] = [
+        {
+          id: "grass",
+          dataUrl: "grass.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["grass"],
+            east: ["grass"],
+            south: ["grass"],
+            west: ["grass"],
+          },
+        },
+        {
+          id: "water",
+          dataUrl: "water.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["water"],
+            east: ["water"],
+            south: ["water"],
+            west: ["water"],
+          },
+        },
+      ];
+
+      const wfc = new WaveFunctionCollapse(strictTiles, 2, 2);
+
+      // After initialization, all cells should have both possibilities
+      // since they can all be either grass or water initially
+      for (let y = 0; y < 2; y++) {
+        for (let x = 0; x < 2; x++) {
+          const possibilities = wfc["possibilities"][y][x];
+          expect(possibilities.size).toBe(2);
+          expect(possibilities.has("grass")).toBe(true);
+          expect(possibilities.has("water")).toBe(true);
+        }
+      }
+    });
+
+    test("should perform initial constraint propagation with complex constraints", () => {
+      // Create tiles where some combinations are impossible
+      const complexTiles: TileData[] = [
+        {
+          id: "grass",
+          dataUrl: "grass.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["grass", "road"],
+            east: ["grass", "road"],
+            south: ["grass", "road"],
+            west: ["grass", "road"],
+          },
+        },
+        {
+          id: "road",
+          dataUrl: "road.png",
+          width: 64,
+          height: 64,
+          borders: {
+            north: ["grass"],
+            east: ["road"],
+            south: ["grass"],
+            west: ["road"],
+          },
+        },
+      ];
+
+      const wfc = new WaveFunctionCollapse(complexTiles, 2, 2);
+
+      // After initialization, all cells should still have both possibilities
+      // since the constraints allow both tiles to be placed together
+      for (let y = 0; y < 2; y++) {
+        for (let x = 0; x < 2; x++) {
+          const possibilities = wfc["possibilities"][y][x];
+          expect(possibilities.size).toBe(2);
+          expect(possibilities.has("grass")).toBe(true);
+          expect(possibilities.has("road")).toBe(true);
+        }
+      }
+    });
   });
 });

@@ -14,19 +14,39 @@ export interface TileData {
   };
 }
 
+/**
+ * Wave Function Collapse Algorithm Implementation
+ *
+ * This implementation is deterministic - given the same tiles, dimensions, and seed,
+ * it will always produce the same result. The algorithm removes randomness by:
+ * 1. Using a deterministic hash function based on position, seed, and iteration
+ * 2. Sorting possibilities before selection to ensure consistent ordering
+ * 3. Using the hash to select tiles in a reproducible manner
+ *
+ * The algorithm also performs initial constraint propagation during initialization
+ * to ensure that all cells start with possibilities that are compatible with their
+ * neighbors, which can improve generation success rates and reduce contradictions.
+ */
 export class WaveFunctionCollapse {
   private tiles: TileData[];
   private width: number;
   private height: number;
   private grid: (string | null)[][];
   private possibilities: Set<string>[][];
+  private seed: number;
 
-  constructor(tiles: TileData[], width: number, height: number) {
+  constructor(
+    tiles: TileData[],
+    width: number,
+    height: number,
+    seed: number = 0
+  ) {
     this.tiles = tiles;
     this.width = width;
     this.height = height;
     this.grid = [];
     this.possibilities = [];
+    this.seed = seed;
 
     // Initialize grid and possibilities
     for (let y = 0; y < height; y++) {
@@ -36,6 +56,11 @@ export class WaveFunctionCollapse {
         this.grid[y][x] = null;
         this.possibilities[y][x] = new Set(tiles.map((tile) => tile.id));
       }
+    }
+
+    // Perform initial constraint propagation only if there are tiles
+    if (this.tiles.length > 0 && this.width > 0 && this.height > 0) {
+      this.performInitialPropagation();
     }
   }
 
@@ -83,6 +108,154 @@ export class WaveFunctionCollapse {
         this.possibilities[y][x] = new Set(this.tiles.map((tile) => tile.id));
       }
     }
+
+    // Perform initial constraint propagation after reset only if there are tiles
+    if (this.tiles.length > 0 && this.width > 0 && this.height > 0) {
+      this.performInitialPropagation();
+    }
+  }
+
+  /**
+   * Perform initial constraint propagation to ensure all cells start with
+   * possibilities that are compatible with their neighbors
+   */
+  private performInitialPropagation(): void {
+    // Create a queue of all cells that need to be checked
+    const queue: Array<{ x: number; y: number }> = [];
+
+    // Add all cells to the queue
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        queue.push({ x, y });
+      }
+    }
+
+    // Process the queue until no more changes occur
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+      const key = `${x},${y}`;
+
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+
+      // Check all four directions for this cell
+      const directions = [
+        {
+          dx: 0,
+          dy: -1,
+          name: "north",
+          currentBorder: "north",
+          neighborBorder: "south",
+        },
+        {
+          dx: 1,
+          dy: 0,
+          name: "east",
+          currentBorder: "east",
+          neighborBorder: "west",
+        },
+        {
+          dx: 0,
+          dy: 1,
+          name: "south",
+          currentBorder: "south",
+          neighborBorder: "north",
+        },
+        {
+          dx: -1,
+          dy: 0,
+          name: "west",
+          currentBorder: "west",
+          neighborBorder: "east",
+        },
+      ];
+
+      for (const {
+        dx,
+        dy,
+        name,
+        currentBorder,
+        neighborBorder,
+      } of directions) {
+        const nx = x + dx;
+        const ny = y + dy;
+
+        // Check bounds
+        if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) {
+          continue;
+        }
+
+        // Get the current cell's possibilities
+        const currentPossibilities = this.possibilities[y][x];
+        const neighborPossibilities = this.possibilities[ny][nx];
+
+        // Find tiles that are compatible between these two cells
+        const compatibleTiles = new Set<string>();
+
+        for (const currentTile of Array.from(currentPossibilities)) {
+          const currentTileData = this.tiles.find((t) => t.id === currentTile);
+          if (!currentTileData) continue;
+
+          const allowedNeighbors =
+            currentTileData.borders[
+              currentBorder as keyof typeof currentTileData.borders
+            ];
+
+          for (const neighborTile of Array.from(neighborPossibilities)) {
+            const neighborTileData = this.tiles.find(
+              (t) => t.id === neighborTile
+            );
+            if (!neighborTileData) continue;
+
+            const neighborBorderTiles =
+              neighborTileData.borders[
+                neighborBorder as keyof typeof neighborTileData.borders
+              ];
+
+            // Check compatibility
+            const isCompatible =
+              allowedNeighbors.includes(neighborTile) ||
+              neighborBorderTiles.includes(currentTile);
+
+            if (isCompatible) {
+              compatibleTiles.add(currentTile);
+              break; // Found a compatible neighbor for this tile
+            }
+          }
+        }
+
+        // If we found incompatible tiles, remove them and add neighbors to queue
+        if (compatibleTiles.size < currentPossibilities.size) {
+          const tilesToRemove = Array.from(currentPossibilities).filter(
+            (tile) => !compatibleTiles.has(tile)
+          );
+
+          for (const tileToRemove of tilesToRemove) {
+            currentPossibilities.delete(tileToRemove);
+          }
+
+          // Add neighboring cells to queue for further propagation
+          for (const { dx: ndx, dy: ndy } of directions) {
+            const nbx = x + ndx;
+            const nby = y + ndy;
+            if (nbx >= 0 && nbx < this.width && nby >= 0 && nby < this.height) {
+              queue.push({ x: nbx, y: nby });
+            }
+          }
+        }
+      }
+
+      // Check for contradiction
+      if (this.possibilities[y][x].size === 0) {
+        throw new Error(
+          `Initial propagation contradiction: cell (${x}, ${y}) has no possibilities`
+        );
+      }
+    }
   }
 
   private runGeneration(): string[][] | null {
@@ -99,8 +272,8 @@ export class WaveFunctionCollapse {
         return this.getResult();
       }
 
-      // Collapse the cell by choosing a random tile from its possibilities
-      const success = this.collapseCell(cell.x, cell.y);
+      // Collapse the cell by choosing a deterministic tile from its possibilities
+      const success = this.collapseCell(cell.x, cell.y, iterations);
       if (!success) {
         // Contradiction detected, this attempt failed
         throw new Error(`Contradiction at (${cell.x}, ${cell.y})`);
@@ -143,16 +316,21 @@ export class WaveFunctionCollapse {
     return minCell;
   }
 
-  private collapseCell(x: number, y: number): boolean {
+  private collapseCell(x: number, y: number, iteration: number): boolean {
     const possibilities = Array.from(this.possibilities[y][x]);
 
     if (possibilities.length === 0) {
       return false; // No possibilities to choose from
     }
 
-    // Choose a random tile from the possibilities
-    const randomIndex = Math.floor(Math.random() * possibilities.length);
-    const chosenTile = possibilities[randomIndex];
+    // Sort possibilities for deterministic selection
+    possibilities.sort();
+
+    // Use a deterministic selection based on position, seed, and iteration
+    // This creates a pseudo-random but reproducible selection
+    const hash = this.hashPosition(x, y, iteration);
+    const index = hash % possibilities.length;
+    const chosenTile = possibilities[index];
 
     // Collapse the cell to the chosen tile
     this.grid[y][x] = chosenTile;
@@ -161,6 +339,19 @@ export class WaveFunctionCollapse {
 
     console.log(`Collapsed cell (${x}, ${y}) to tile: ${chosenTile}`);
     return true;
+  }
+
+  /**
+   * Generate a deterministic hash for a position based on coordinates, seed, and iteration
+   */
+  private hashPosition(x: number, y: number, iteration: number): number {
+    // Simple hash function that combines position, seed, and iteration
+    let hash = this.seed;
+    hash = (hash << 5) - hash + x;
+    hash = (hash << 5) - hash + y;
+    hash = (hash << 5) - hash + iteration;
+    hash = hash & hash; // Convert to 32-bit integer
+    return Math.abs(hash);
   }
 
   private propagate(startX: number, startY: number): void {
@@ -316,6 +507,13 @@ export class WaveFunctionCollapse {
   }
 
   /**
+   * Get the current seed used for deterministic generation
+   */
+  public getSeed(): number {
+    return this.seed;
+  }
+
+  /**
    * Validate the final arrangement to ensure all tiles are compatible
    */
   public validateArrangement(arrangement: string[][]): {
@@ -415,12 +613,16 @@ export class WaveFunctionCollapse {
 
 /**
  * Convenience function to generate a tile arrangement using wave function collapse
+ *
+ * This function is deterministic - given the same parameters, it will always
+ * return the same result. Use different seed values to generate different arrangements.
  */
 export function generateTileArrangement(
   tiles: TileData[],
   width: number,
-  height: number
+  height: number,
+  seed: number = 0
 ): string[][] | null {
-  const wfc = new WaveFunctionCollapse(tiles, width, height);
+  const wfc = new WaveFunctionCollapse(tiles, width, height, seed);
   return wfc.generate();
 }
