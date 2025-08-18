@@ -89,6 +89,10 @@ class Cell {
 
   addPossibility(tileId: string): void {
     this.possibilities.add(tileId);
+    // Ensure support is initialized for this tile
+    if (!this.support.has(tileId)) {
+      this.support.set(tileId, [0, 0, 0, 0]); // [north, east, south, west]
+    }
   }
 
   getSupport(tileId: string, direction: number): number {
@@ -298,10 +302,20 @@ export class TileSynthesizer {
     let totalSupport = 0;
     let minSupport = Infinity;
     let maxSupport = 0;
+    let cellsWithNoSupport = 0;
 
     for (let y = 0; y < this.gridHeight; y++) {
       for (let x = 0; x < this.gridWidth; x++) {
         const cell = this.cells[y][x];
+        const possibilityCount = cell.getPossibilityCount();
+
+        if (possibilityCount === 0) {
+          cellsWithNoSupport++;
+          console.log(
+            `⚠️ Cell (${x}, ${y}) has no possibilities after initial support calculation`
+          );
+        }
+
         for (const tileId of cell.getPossibilities()) {
           let tileSupport = 0;
           for (let dir = 0; dir < 4; dir++) {
@@ -310,6 +324,12 @@ export class TileSynthesizer {
           totalSupport += tileSupport;
           minSupport = Math.min(minSupport, tileSupport);
           maxSupport = Math.max(maxSupport, tileSupport);
+
+          if (tileSupport === 0) {
+            console.log(
+              `⚠️ Tile ${tileId} at (${x}, ${y}) has zero support after initial calculation`
+            );
+          }
         }
       }
     }
@@ -319,7 +339,7 @@ export class TileSynthesizer {
     console.log(
       `📊 Initial support stats: min=${minSupport}, max=${maxSupport}, avg=${avgSupport.toFixed(
         2
-      )}`
+      )}, cells with no support=${cellsWithNoSupport}`
     );
   }
 
@@ -332,8 +352,8 @@ export class TileSynthesizer {
       { dx: -1, dy: 0, dir: 3 }, // west
     ];
 
-    // Reset support for all tiles
-    for (const tileId of this.tiles.map((t) => t.id)) {
+    // Reset support for all tiles that are currently possible
+    for (const tileId of cell.getPossibilities()) {
       cell.setSupport(tileId, 0, 0);
       cell.setSupport(tileId, 1, 0);
       cell.setSupport(tileId, 2, 0);
@@ -348,14 +368,14 @@ export class TileSynthesizer {
       if (nx >= 0 && nx < this.gridWidth && ny >= 0 && ny < this.gridHeight) {
         const neighborCell = this.cells[ny][nx];
 
-        // Only consider tiles that are actually possible in the neighbor cell
+        // Calculate support from all possible tiles in the neighbor cell
         for (const neighborTileId of neighborCell.getPossibilities()) {
           const neighborRules = this.rules.get(neighborTileId);
           if (neighborRules) {
             const allowedTiles = neighborRules.get(dir.toString());
             if (allowedTiles) {
               for (const allowedTileId of allowedTiles) {
-                // Only add support if the tile is still possible in the current cell
+                // Add support for this tile if it's currently possible in the target cell
                 if (cell.hasPossibility(allowedTileId)) {
                   const currentSupport = cell.getSupport(allowedTileId, dir);
                   cell.setSupport(allowedTileId, dir, currentSupport + 1);
@@ -365,6 +385,31 @@ export class TileSynthesizer {
           }
         }
       }
+    }
+
+    // Additional validation: remove tiles that have no support in any direction
+    // This ensures we don't keep tiles that can't be placed
+    const tilesToRemove: string[] = [];
+    for (const tileId of cell.getPossibilities()) {
+      let hasAnySupport = false;
+      for (let dir = 0; dir < 4; dir++) {
+        if (cell.getSupport(tileId, dir) > 0) {
+          hasAnySupport = true;
+          break;
+        }
+      }
+
+      if (!hasAnySupport) {
+        tilesToRemove.push(tileId);
+      }
+    }
+
+    // Remove tiles with no support
+    for (const tileId of tilesToRemove) {
+      console.log(
+        `  🚫 Removing tile ${tileId} from (${x}, ${y}) during support calculation - no support in any direction`
+      );
+      cell.removePossibility(tileId);
     }
   }
 
@@ -575,8 +620,11 @@ export class TileSynthesizer {
         // Choose a tile to keep (smart selection based on support)
         const { chosenTile, toRemove } = this.chooseRemovalSet(x, y);
         console.log(
-          `🗑️  Removing ${toRemove.size} tiles from cell (${x}, ${y})`
+          `🗑️  Removing ${
+            toRemove.size
+          } tiles from cell (${x}, ${y}): ${Array.from(toRemove).join(", ")}`
         );
+        console.log(`✅ Keeping tile: ${chosenTile}`);
 
         const { contradiction, deactivated } = this.propagateRemove(
           x,
@@ -673,6 +721,25 @@ export class TileSynthesizer {
           console.log(`🏆 Final compatibility score: ${score}`);
           resolve({ success: true, arrangement, compatibilityScore: score });
           return;
+        }
+
+        // Periodic validation check to catch issues early
+        if (iteration % 50 === 0) {
+          const arrangement = this.getArrangement();
+          const validation = this.validateArrangement(arrangement);
+          if (!validation.isValid) {
+            console.warn(
+              `⚠️ Validation issues detected at iteration ${iteration}:`
+            );
+            validation.errors
+              .slice(0, 3)
+              .forEach((error) => console.warn(`  - ${error}`));
+            if (validation.errors.length > 3) {
+              console.warn(
+                `  ... and ${validation.errors.length - 3} more errors`
+              );
+            }
+          }
         }
 
         // Save state for backtracking
@@ -856,6 +923,12 @@ export class TileSynthesizer {
 
     queue.push({ x, y, removed });
 
+    console.log(
+      `🔍 Starting propagation from (${x}, ${y}), removing: ${Array.from(
+        toRemove
+      ).join(", ")}`
+    );
+
     // Process queue
     while (queue.length > 0) {
       const current = queue.pop()!;
@@ -905,7 +978,37 @@ export class TileSynthesizer {
             }
           }
 
+          // Additional check: remove tiles that have no support in any direction
+          // This is more aggressive than just checking if support went to zero
+          const tilesToCheck = Array.from(targetCell.getPossibilities());
+          for (const tileId of tilesToCheck) {
+            let hasAnySupport = false;
+            for (let dir = 0; dir < 4; dir++) {
+              if (targetCell.getSupport(tileId, dir) > 0) {
+                hasAnySupport = true;
+                break;
+              }
+            }
+
+            if (!hasAnySupport) {
+              console.log(
+                `  🚫 Removing tile ${tileId} from (${nx}, ${ny}) - no support in any direction`
+              );
+              targetCell.removePossibility(tileId);
+              deactivated.push({ x: nx, y: ny, tileId });
+              newlyRemoved.push(tileId);
+
+              if (targetCell.getPossibilityCount() === 0) {
+                contradiction = true;
+              }
+            }
+          }
+
           if (newlyRemoved.length > 0) {
+            console.log(
+              `  📍 Cell (${nx}, ${ny}) lost tiles: ${newlyRemoved.join(", ")}`
+            );
+
             // Find existing entry or create new one
             let found = false;
             for (const entry of queue) {
@@ -943,7 +1046,16 @@ export class TileSynthesizer {
         }
       }
     }
-    this.recalculateSupportForAffectedCells(affectedCells);
+
+    // Remove duplicates from affectedCells
+    const uniqueAffectedCells = Array.from(
+      new Set(affectedCells.map((cell) => `${cell.x},${cell.y}`))
+    ).map((key) => {
+      const [x, y] = key.split(",").map(Number);
+      return { x, y };
+    });
+
+    this.recalculateSupportForAffectedCells(uniqueAffectedCells);
 
     console.log(`🌊 Propagation removed ${deactivated.length} tiles total`);
     return { contradiction, deactivated };
