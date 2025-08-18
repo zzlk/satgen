@@ -135,15 +135,57 @@ export default function () {
         Math.max(...enhancedTiles.map((t) => t.y)) + 1
       );
 
-      const result = await synthesisCollection.synthesize(
+      // Use the generator function for real-time progress updates
+      const generator = synthesisCollection.synthesizeWithProgress(
         targetWidth,
         targetHeight,
-        synthesisSeed,
-        handleProgressUpdate,
-        handleAttemptStart,
-        handlePartialResult
+        synthesisSeed
       );
-      setSynthesizedImage(result);
+
+      let result: string[][] | null = null;
+      let partialResult: any = null;
+
+      // Process the generator
+      while (true) {
+        const next = generator.next();
+
+        if (next.done) {
+          result = next.value;
+          break;
+        }
+
+        partialResult = next.value;
+
+        // Update progress
+        setSynthesisProgress({
+          totalCollapsed: partialResult.collapsedCells,
+          totalCells: partialResult.totalCells,
+          iteration: partialResult.iteration,
+          attemptNumber: 1, // Single attempt with generator
+          collapsedCell: partialResult.lastCollapsedCell
+            ? {
+                x: partialResult.lastCollapsedCell.x,
+                y: partialResult.lastCollapsedCell.y,
+                tileId: partialResult.lastCollapsedCell.tile,
+                possibilities: 1, // We know it's collapsed, so only 1 possibility
+              }
+            : undefined,
+        });
+
+        // Render partial result
+        if (partialResult.arrangement && partialResult.arrangement.length > 0) {
+          await renderPartialResultFromArrangement(partialResult.arrangement);
+        }
+
+        // Small delay to allow UI updates
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      if (result) {
+        // Render final result
+        const finalImage = await renderArrangementToImage(result);
+        setSynthesizedImage(finalImage);
+      }
     } catch (error) {
       console.error("Error synthesizing image:", error);
       alert(
@@ -213,6 +255,129 @@ export default function () {
       setPartialResultImage(dataUrl);
     },
     [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight]
+  );
+
+  const renderPartialResultFromArrangement = useCallback(
+    async (arrangement: string[][]) => {
+      if (!arrangement || arrangement.length === 0) return;
+
+      const targetWidth = synthesizeWidth * tileWidth;
+      const targetHeight = synthesizeHeight * tileHeight;
+
+      // Create canvas for the partial result
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) return;
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+      // Render the partial arrangement
+      for (let gridY = 0; gridY < arrangement.length; gridY++) {
+        for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
+          const tileId = arrangement[gridY][gridX];
+          if (tileId) {
+            const tile = enhancedTiles.find((t) => t.id === tileId);
+            if (tile) {
+              const targetX = gridX * tileWidth;
+              const targetY = gridY * tileHeight;
+
+              const tileCanvas = document.createElement("canvas");
+              const tileCtx = tileCanvas.getContext("2d");
+
+              if (tileCtx) {
+                const tileImg = new Image();
+
+                await new Promise<void>((resolve, reject) => {
+                  tileImg.onload = () => {
+                    tileCanvas.width = tileWidth;
+                    tileCanvas.height = tileHeight;
+                    tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
+                    ctx.drawImage(tileCanvas, targetX, targetY);
+                    resolve();
+                  };
+
+                  tileImg.onerror = () => {
+                    reject(new Error(`Failed to load tile image: ${tileId}`));
+                  };
+
+                  tileImg.src = tile.dataUrl;
+                });
+              }
+            }
+          }
+        }
+      }
+
+      const dataUrl = canvas.toDataURL("image/png");
+      setPartialResultImage(dataUrl);
+    },
+    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight, enhancedTiles]
+  );
+
+  const renderArrangementToImage = useCallback(
+    async (arrangement: string[][]): Promise<string> => {
+      if (!arrangement || arrangement.length === 0) {
+        throw new Error("No arrangement to render");
+      }
+
+      const targetWidth = synthesizeWidth * tileWidth;
+      const targetHeight = synthesizeHeight * tileHeight;
+
+      // Create canvas for the final result
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) {
+        throw new Error("Failed to get canvas context");
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+      // Render the arrangement
+      for (let gridY = 0; gridY < arrangement.length; gridY++) {
+        for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
+          const tileId = arrangement[gridY][gridX];
+          if (tileId) {
+            const tile = enhancedTiles.find((t) => t.id === tileId);
+            if (tile) {
+              const targetX = gridX * tileWidth;
+              const targetY = gridY * tileHeight;
+
+              const tileCanvas = document.createElement("canvas");
+              const tileCtx = tileCanvas.getContext("2d");
+
+              if (tileCtx) {
+                const tileImg = new Image();
+
+                await new Promise<void>((resolve, reject) => {
+                  tileImg.onload = () => {
+                    tileCanvas.width = tileWidth;
+                    tileCanvas.height = tileHeight;
+                    tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
+                    ctx.drawImage(tileCanvas, targetX, targetY);
+                    resolve();
+                  };
+
+                  tileImg.onerror = () => {
+                    reject(new Error(`Failed to load tile image: ${tileId}`));
+                  };
+
+                  tileImg.src = tile.dataUrl;
+                });
+              }
+            }
+          }
+        }
+      }
+
+      return canvas.toDataURL("image/png");
+    },
+    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight, enhancedTiles]
   );
 
   return (

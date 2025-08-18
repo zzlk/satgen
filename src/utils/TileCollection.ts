@@ -5,6 +5,10 @@ import type {
   SynthesisProgress,
   SynthesisAttemptStart,
 } from "./WaveFunctionCollapseSynthesizer";
+import {
+  generateTileArrangementWithProgress,
+  type PartialResult,
+} from "../workers/waveFunctionCollapse";
 
 export class TileCollection {
   public readonly tiles: Tile[];
@@ -131,6 +135,46 @@ export class TileCollection {
       onPartialResult
     );
     return result.dataUrl;
+  }
+
+  /**
+   * Generator function that synthesizes a new image with real-time progress updates
+   * @param targetWidth - Desired width in pixels (must be multiple of tile width)
+   * @param targetHeight - Desired height in pixels (must be multiple of tile height)
+   * @param seed - Seed for deterministic generation (default: 0)
+   * @returns Generator that yields partial results during synthesis
+   */
+  *synthesizeWithProgress(
+    targetWidth: number,
+    targetHeight: number,
+    seed: number = 0
+  ): Generator<PartialResult, string[][] | null, unknown> {
+    // Convert tiles to the format expected by the wave function collapse algorithm
+    const tileData = this.tiles.map((tile) => ({
+      id: tile.id,
+      dataUrl: tile.dataUrl,
+      width: tile.width,
+      height: tile.height,
+      borders: {
+        north: Array.from(tile.borders.north),
+        east: Array.from(tile.borders.east),
+        south: Array.from(tile.borders.south),
+        west: Array.from(tile.borders.west),
+      },
+    }));
+
+    // Calculate grid dimensions
+    const gridWidth = Math.floor(targetWidth / this.tiles[0]?.width || 1);
+    const gridHeight = Math.floor(targetHeight / this.tiles[0]?.height || 1);
+
+    // Use the generator function from the wave function collapse worker
+    const result = yield* generateTileArrangementWithProgress(
+      tileData,
+      gridWidth,
+      gridHeight,
+      seed
+    );
+    return result;
   }
 
   /**

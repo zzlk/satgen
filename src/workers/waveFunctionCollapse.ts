@@ -14,6 +14,15 @@ export interface TileData {
   };
 }
 
+export interface PartialResult {
+  arrangement: string[][];
+  collapsedCells: number;
+  totalCells: number;
+  iteration: number;
+  lastCollapsedCell?: { x: number; y: number; tile: string };
+  isComplete: boolean;
+}
+
 /**
  * Wave Function Collapse Algorithm Implementation
  *
@@ -98,10 +107,14 @@ export class WaveFunctionCollapse {
   }
 
   /**
-   * Main function to generate the tile arrangement
-   * Returns a 2D array of tile IDs, or null if generation fails
+   * Generator function to generate the tile arrangement with partial results
+   * Yields partial results during backtracking and when contradictions occur
    */
-  public generate(): string[][] | null {
+  public *generateWithProgress(): Generator<
+    PartialResult,
+    string[][] | null,
+    unknown
+  > {
     console.log(
       `Starting wave function collapse for ${this.width}x${this.height} grid`
     );
@@ -124,7 +137,15 @@ export class WaveFunctionCollapse {
         const cell = this.findLowestEntropyCell();
         if (!cell) {
           // All cells are collapsed, we're done!
-          return this.getResult();
+          const result = this.getResult();
+          yield {
+            arrangement: result,
+            collapsedCells: this.width * this.height,
+            totalCells: this.width * this.height,
+            iteration: iterations,
+            isComplete: true,
+          };
+          return result;
         }
 
         const cellKey = `${cell.x},${cell.y}`;
@@ -158,6 +179,10 @@ export class WaveFunctionCollapse {
           console.log(
             `All possibilities tried for cell (${cell.x}, ${cell.y}), backtracking`
           );
+
+          // Yield partial result before backtracking
+          const partialResult = this.getPartialResult(iterations);
+          yield partialResult;
 
           if (stateStack.length === 0) {
             throw new Error(`No valid arrangement possible`);
@@ -206,6 +231,11 @@ export class WaveFunctionCollapse {
           console.log(
             `Contradiction detected, restoring state and trying next possibility`
           );
+
+          // Yield partial result after contradiction
+          const partialResult = this.getPartialResult(iterations);
+          yield partialResult;
+
           this.restorePossibilities(stateBeforeCollapse);
           continue; // Try the next iteration with the restored state
         }
@@ -219,6 +249,55 @@ export class WaveFunctionCollapse {
       );
       return null;
     }
+  }
+
+  /**
+   * Get a partial result representing the current state of the generation
+   */
+  private getPartialResult(iteration: number): PartialResult {
+    const arrangement: string[][] = [];
+    let collapsedCells = 0;
+    let lastCollapsedCell: { x: number; y: number; tile: string } | undefined;
+
+    for (let y = 0; y < this.height; y++) {
+      arrangement[y] = [];
+      for (let x = 0; x < this.width; x++) {
+        if (this.isCollapsed(x, y)) {
+          const tile = this.getCollapsedTile(x, y);
+          arrangement[y][x] = tile;
+          collapsedCells++;
+          lastCollapsedCell = { x, y, tile };
+        } else {
+          // For uncollapsed cells, use the first possibility as a placeholder
+          const possibilities = Array.from(this.possibilities[y][x]);
+          arrangement[y][x] = possibilities.length > 0 ? possibilities[0] : "";
+        }
+      }
+    }
+
+    return {
+      arrangement,
+      collapsedCells,
+      totalCells: this.width * this.height,
+      iteration,
+      lastCollapsedCell,
+      isComplete: false,
+    };
+  }
+
+  /**
+   * Main function to generate the tile arrangement (legacy method)
+   * Returns a 2D array of tile IDs, or null if generation fails
+   */
+  public generate(): string[][] | null {
+    const generator = this.generateWithProgress();
+    let result: IteratorResult<PartialResult, string[][] | null>;
+
+    do {
+      result = generator.next();
+    } while (!result.done);
+
+    return result.value;
   }
 
   /**
@@ -661,4 +740,22 @@ export function generateTileArrangement(
 ): string[][] | null {
   const wfc = new WaveFunctionCollapse(tiles, width, height, seed);
   return wfc.generate();
+}
+
+/**
+ * Generator function to generate a tile arrangement with progress updates
+ *
+ * This function yields partial results during generation, allowing for real-time
+ * visualization of the wave function collapse process. It's deterministic - given
+ * the same parameters, it will always produce the same sequence of results.
+ */
+export function* generateTileArrangementWithProgress(
+  tiles: TileData[],
+  width: number,
+  height: number,
+  seed: number = 0
+): Generator<PartialResult, string[][] | null, unknown> {
+  const wfc = new WaveFunctionCollapse(tiles, width, height, seed);
+  const result = yield* wfc.generateWithProgress();
+  return result;
 }
