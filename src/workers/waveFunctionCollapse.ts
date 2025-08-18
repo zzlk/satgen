@@ -15,7 +15,7 @@ export interface TileData {
 }
 
 export interface PartialResult {
-  arrangement: string[][];
+  arrangement: string[][] | null;
   collapsedCells: number;
   totalCells: number;
   iteration: number;
@@ -122,7 +122,6 @@ export class WaveFunctionCollapse {
 
     try {
       let iterations = 0;
-      const maxIterations = this.width * this.height * 999999999;
 
       // Stack to store state snapshots for backtracking
       const stateStack: Array<{
@@ -130,7 +129,7 @@ export class WaveFunctionCollapse {
         triedPossibilities: Map<string, Set<string>>;
       }> = [];
 
-      while (iterations < maxIterations) {
+      while (true) {
         iterations++;
 
         // Find the cell with the fewest possibilities (lowest entropy)
@@ -240,8 +239,6 @@ export class WaveFunctionCollapse {
           continue; // Try the next iteration with the restored state
         }
       }
-
-      throw new Error(`Max iterations reached`);
     } catch (error) {
       console.log(`Generation failed: ${error}`);
       console.log(
@@ -255,6 +252,17 @@ export class WaveFunctionCollapse {
    * Get a partial result representing the current state of the generation
    */
   private getPartialResult(iteration: number): PartialResult {
+    // Return null arrangement for zero dimensions
+    if (this.width === 0 || this.height === 0) {
+      return {
+        arrangement: null,
+        collapsedCells: 0,
+        totalCells: 0,
+        iteration,
+        isComplete: true,
+      };
+    }
+
     const arrangement: string[][] = [];
     let collapsedCells = 0;
     let lastCollapsedCell: { x: number; y: number; tile: string } | undefined;
@@ -644,7 +652,12 @@ export class WaveFunctionCollapse {
     }
   }
 
-  private getResult(): string[][] {
+  private getResult(): string[][] | null {
+    // Return null for zero dimensions
+    if (this.width === 0 || this.height === 0) {
+      return null;
+    }
+
     const result: string[][] = [];
 
     for (let y = 0; y < this.height; y++) {
