@@ -1183,7 +1183,7 @@ describe("WaveFunctionCollapse", () => {
     });
   });
 
-  describe("Contradiction-Based Cell Shuffling", () => {
+  describe("Contradiction-Based Random Cell Shuffling", () => {
     test("should track contradiction count correctly", () => {
       const wfc = new WaveFunctionCollapse(simpleTiles, 3, 3);
 
@@ -1336,7 +1336,7 @@ describe("WaveFunctionCollapse", () => {
       expect(validation2.isValid).toBe(true);
     });
 
-    test("should shuffle cells within entropy groups", () => {
+    test("should shuffle cells randomly after contradictions", () => {
       const wfc = new WaveFunctionCollapse(simpleTiles, 3, 3);
 
       // Test the shuffling functionality directly
@@ -1348,9 +1348,9 @@ describe("WaveFunctionCollapse", () => {
       ];
 
       // Test shuffling with different contradiction counts
-      const result1 = wfc["shuffleCellsByEntropy"]([...testCells]);
+      const result1 = wfc["shuffleCells"]([...testCells]);
       wfc["contradictionCount"] = 1;
-      const result2 = wfc["shuffleCellsByEntropy"]([...testCells]);
+      const result2 = wfc["shuffleCells"]([...testCells]);
 
       // Both results should have the same cells but potentially different order
       expect(result1.length).toBe(testCells.length);

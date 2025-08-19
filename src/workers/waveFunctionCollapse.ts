@@ -166,17 +166,6 @@ export class WaveFunctionCollapse {
   ): Generator<PartialResult, string[][] | null, unknown> {
     iteration++;
 
-    // Log progress every 100 iterations
-    if (iteration % 100 === 0) {
-      const totalCells = this.width * this.height;
-      const collapsedCells = this.countCollapsedCells();
-      console.log(
-        `[Progress] Iteration ${iteration}: ${collapsedCells}/${totalCells} cells collapsed (${Math.round(
-          (collapsedCells / totalCells) * 100
-        )}%)`
-      );
-    }
-
     // Get sorted list of cells by entropy (lowest first) with shuffling based on contradiction count
     const cells = this.getSortedCellsByEntropy();
     if (cells.length === 0) {
@@ -196,23 +185,15 @@ export class WaveFunctionCollapse {
       return result;
     }
 
-    // Log cell selection order if contradiction count is high (showing shuffling effect)
-    if (this.contradictionCount > 0) {
-      console.log(
-        `[Shuffle] Cell selection order after ${
-          this.contradictionCount
-        } contradictions: ${cells
-          .slice(0, 5)
-          .map((c) => `(${c.x},${c.y})[${c.entropy}]`)
-          .join(" -> ")}${cells.length > 5 ? "..." : ""}`
-      );
-    }
-
     // Loop through each cell in order of entropy
-    for (const cell of cells) {
-      console.log(
-        `[Decision] Trying cell (${cell.x}, ${cell.y}) with ${cell.entropy} possibilities`
-      );
+    while (true) {
+      const cell = this.getRandomNonCollapsedCell();
+      if (!cell) {
+        console.log(`[Failure] No non-collapsed cells found`);
+        break;
+      }
+
+      console.log(`[Decision] Trying cell (${cell.x}, ${cell.y})`);
 
       const availablePossibilities = Array.from(
         this.possibilities[cell.y][cell.x]
@@ -275,6 +256,8 @@ export class WaveFunctionCollapse {
             yield partialResult;
           }
         } catch (error) {
+          this.lastCollapsedCells.pop();
+
           // Contradiction detected, restore the previous state
           console.log(
             `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${
@@ -293,18 +276,18 @@ export class WaveFunctionCollapse {
           // Restore the previous state first
           this.restorePossibilities(stateBeforeCollapse);
 
-          // Reset a 3x3 area around the contradiction to prevent getting stuck
-          try {
-            this.resetArea(cell.x, cell.y);
-            console.log(
-              `[Contradiction] Reset 3x3 area around (${cell.x}, ${cell.y}) to prevent getting stuck`
-            );
-          } catch (resetError) {
-            console.log(
-              `[Contradiction] Failed to reset area around (${cell.x}, ${cell.y}): ${resetError}`
-            );
-            // Continue even if reset fails
-          }
+          // // Reset a 3x3 area around the contradiction to prevent getting stuck
+          // try {
+          //   this.resetArea(cell.x, cell.y);
+          //   console.log(
+          //     `[Contradiction] Reset 3x3 area around (${cell.x}, ${cell.y}) to prevent getting stuck`
+          //   );
+          // } catch (resetError) {
+          //   console.log(
+          //     `[Contradiction] Failed to reset area around (${cell.x}, ${cell.y}): ${resetError}`
+          //   );
+          //   // Continue even if reset fails
+          // }
 
           // Yield partial result after contradiction
           const partialResult = this.getPartialResult(iteration);
@@ -412,7 +395,7 @@ export class WaveFunctionCollapse {
   }
 
   /**
-   * Get all uncollapsed cells sorted by entropy (lowest first) and shuffled within entropy groups
+   * Get all uncollapsed cells in random order based on contradiction count
    */
   private getSortedCellsByEntropy(): Array<{
     x: number;
@@ -434,50 +417,34 @@ export class WaveFunctionCollapse {
       }
     }
 
-    // Sort by entropy (lowest first), then shuffle within entropy groups based on contradiction count
-    return this.shuffleCellsByEntropy(cells);
+    // Return cells in random order based on contradiction count
+    return this.shuffleCells(cells);
   }
 
-  /**
-   * Shuffle cells within entropy groups to add randomness after contradictions
-   */
-  private shuffleCellsByEntropy(
-    cells: Array<{ x: number; y: number; entropy: number }>
-  ): Array<{ x: number; y: number; entropy: number }> {
-    // First sort by entropy
-    cells.sort((a, b) => a.entropy - b.entropy);
-
-    // Group cells by entropy
-    const entropyGroups = new Map<
-      number,
-      Array<{ x: number; y: number; entropy: number }>
-    >();
-
-    for (const cell of cells) {
-      if (!entropyGroups.has(cell.entropy)) {
-        entropyGroups.set(cell.entropy, []);
+  private getRandomNonCollapsedCell():
+    | {
+        x: number;
+        y: number;
       }
-      entropyGroups.get(cell.entropy)!.push(cell);
+    | undefined {
+    const cells: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (!this.isCollapsed(x, y)) {
+          cells.push({ x, y });
+        }
+      }
     }
 
-    // Shuffle each entropy group and combine
-    const result: Array<{ x: number; y: number; entropy: number }> = [];
-
-    for (const [entropy, group] of entropyGroups) {
-      // Shuffle the group using the contradiction count for randomness
-      const shuffledGroup = this.shuffleCellGroup(group);
-      result.push(...shuffledGroup);
-    }
-
-    return result;
+    // Return cells in random order based on contradiction count
+    return this.shuffleCells(cells).pop();
   }
 
   /**
-   * Shuffle a group of cells using the contradiction count for deterministic randomness
+   * Shuffle all cells randomly using the contradiction count for deterministic randomness
    */
-  private shuffleCellGroup(
-    cells: Array<{ x: number; y: number; entropy: number }>
-  ): Array<{ x: number; y: number; entropy: number }> {
+  private shuffleCells<T>(cells: Array<T>): Array<T> {
     const shuffled = [...cells];
 
     // Use Fisher-Yates shuffle with contradiction count for randomness
