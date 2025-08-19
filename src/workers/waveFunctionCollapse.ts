@@ -62,6 +62,7 @@ export class WaveFunctionCollapse {
     tile: string;
     iteration: number;
   }> = [];
+  private contradictionCount: number = 0; // Track contradictions for shuffling
 
   // Shared direction definitions
   private static readonly DIRECTIONS = [
@@ -135,6 +136,10 @@ export class WaveFunctionCollapse {
     );
     console.log(`Available tiles: ${this.tiles.map((t) => t.id).join(", ")}`);
 
+    // Reset contradiction counter for new generation
+    this.contradictionCount = 0;
+    console.log(`[Start] Contradiction counter reset to 0`);
+
     try {
       const result = yield* this.generateRecursive(0);
       if (result === null) {
@@ -172,7 +177,7 @@ export class WaveFunctionCollapse {
       );
     }
 
-    // Get sorted list of cells by entropy (lowest first)
+    // Get sorted list of cells by entropy (lowest first) with shuffling based on contradiction count
     const cells = this.getSortedCellsByEntropy();
     if (cells.length === 0) {
       // All cells are collapsed, we're done!
@@ -189,6 +194,18 @@ export class WaveFunctionCollapse {
         isComplete: true,
       };
       return result;
+    }
+
+    // Log cell selection order if contradiction count is high (showing shuffling effect)
+    if (this.contradictionCount > 0) {
+      console.log(
+        `[Shuffle] Cell selection order after ${
+          this.contradictionCount
+        } contradictions: ${cells
+          .slice(0, 5)
+          .map((c) => `(${c.x},${c.y})[${c.entropy}]`)
+          .join(" -> ")}${cells.length > 5 ? "..." : ""}`
+      );
     }
 
     // Loop through each cell in order of entropy
@@ -244,6 +261,13 @@ export class WaveFunctionCollapse {
             console.log(
               `[Backtrack] Branch failed for cell (${cell.x}, ${cell.y}), restoring state and trying next possibility`
             );
+
+            // Increment contradiction counter for shuffling (backtracking is also a form of contradiction)
+            this.contradictionCount++;
+            console.log(
+              `[Backtrack] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
+            );
+
             this.restorePossibilities(stateBeforeCollapse);
 
             // Yield partial result after backtracking
@@ -260,11 +284,32 @@ export class WaveFunctionCollapse {
             }`
           );
 
+          // Increment contradiction counter for shuffling
+          this.contradictionCount++;
+          console.log(
+            `[Contradiction] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
+          );
+
+          // Restore the previous state first
+          this.restorePossibilities(stateBeforeCollapse);
+
+          // Reset a 3x3 area around the contradiction to prevent getting stuck
+          try {
+            this.resetArea(cell.x, cell.y);
+            console.log(
+              `[Contradiction] Reset 3x3 area around (${cell.x}, ${cell.y}) to prevent getting stuck`
+            );
+          } catch (resetError) {
+            console.log(
+              `[Contradiction] Failed to reset area around (${cell.x}, ${cell.y}): ${resetError}`
+            );
+            // Continue even if reset fails
+          }
+
           // Yield partial result after contradiction
           const partialResult = this.getPartialResult(iteration);
           yield partialResult;
 
-          this.restorePossibilities(stateBeforeCollapse);
           // Continue to next possibility in the inner loop
         }
       }
@@ -389,16 +434,63 @@ export class WaveFunctionCollapse {
       }
     }
 
-    // Sort by entropy (lowest first), then shuffle within entropy groups
-    return cells.sort((a, b) => {
-      if (a.entropy !== b.entropy) {
-        return a.entropy - b.entropy;
+    // Sort by entropy (lowest first), then shuffle within entropy groups based on contradiction count
+    return this.shuffleCellsByEntropy(cells);
+  }
+
+  /**
+   * Shuffle cells within entropy groups to add randomness after contradictions
+   */
+  private shuffleCellsByEntropy(
+    cells: Array<{ x: number; y: number; entropy: number }>
+  ): Array<{ x: number; y: number; entropy: number }> {
+    // First sort by entropy
+    cells.sort((a, b) => a.entropy - b.entropy);
+
+    // Group cells by entropy
+    const entropyGroups = new Map<
+      number,
+      Array<{ x: number; y: number; entropy: number }>
+    >();
+
+    for (const cell of cells) {
+      if (!entropyGroups.has(cell.entropy)) {
+        entropyGroups.set(cell.entropy, []);
       }
-      // If entropy is the same, shuffle based on seed and position
-      const hashA = this.hashPosition(a.x, a.y, 0);
-      const hashB = this.hashPosition(b.x, b.y, 0);
-      return hashA - hashB;
-    });
+      entropyGroups.get(cell.entropy)!.push(cell);
+    }
+
+    // Shuffle each entropy group and combine
+    const result: Array<{ x: number; y: number; entropy: number }> = [];
+
+    for (const [entropy, group] of entropyGroups) {
+      // Shuffle the group using the contradiction count for randomness
+      const shuffledGroup = this.shuffleCellGroup(group);
+      result.push(...shuffledGroup);
+    }
+
+    return result;
+  }
+
+  /**
+   * Shuffle a group of cells using the contradiction count for deterministic randomness
+   */
+  private shuffleCellGroup(
+    cells: Array<{ x: number; y: number; entropy: number }>
+  ): Array<{ x: number; y: number; entropy: number }> {
+    const shuffled = [...cells];
+
+    // Use Fisher-Yates shuffle with contradiction count for randomness
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      // Create a hash based on contradiction count and position
+      const hash = this.hashPosition(this.contradictionCount, i, 0);
+      const j = hash % (i + 1);
+
+      // Swap elements
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    return shuffled;
   }
 
   /**
@@ -729,6 +821,246 @@ export class WaveFunctionCollapse {
     }
   }
 
+  /**
+   * Reset a 3x3 area centered on the specified cell
+   * @param centerX - X coordinate of the center cell
+   * @param centerY - Y coordinate of the center cell
+   */
+  public resetArea(centerX: number, centerY: number): void {
+    console.log(
+      `[ResetArea] Resetting 3x3 area centered on (${centerX}, ${centerY})`
+    );
+
+    // Calculate the bounds of the 3x3 area
+    const startX = Math.max(0, centerX - 1);
+    const endX = Math.min(this.width - 1, centerX + 1);
+    const startY = Math.max(0, centerY - 1);
+    const endY = Math.min(this.height - 1, centerY + 1);
+
+    // Reset each cell in the area without propagation
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        // Skip if the cell is already collapsed (we don't want to reset collapsed cells)
+        if (!this.isCollapsed(x, y)) {
+          // Reset the cell to have all possible tiles (without propagation)
+          this.possibilities[y][x].clear();
+          for (const tile of this.tiles) {
+            this.possibilities[y][x].add(tile.id);
+          }
+        }
+      }
+    }
+
+    // After resetting, perform constraint propagation on the reset area
+    // This ensures the reset cells are compatible with their neighbors
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        if (!this.isCollapsed(x, y)) {
+          // Check all four directions and remove incompatible tiles
+          for (const direction of WaveFunctionCollapse.DIRECTIONS) {
+            const nx = x + direction.dx;
+            const ny = y + direction.dy;
+
+            if (this.isInBounds(nx, ny) && this.isCollapsed(nx, ny)) {
+              // Neighbor is collapsed, so we need to ensure compatibility
+              const neighborTile = this.getCollapsedTile(nx, ny);
+              const neighborTileData = this.tiles.find(
+                (t) => t.id === neighborTile
+              );
+
+              if (neighborTileData) {
+                // Remove tiles that are incompatible with the collapsed neighbor
+                const tilesToRemove: string[] = [];
+                for (const tileId of Array.from(this.possibilities[y][x])) {
+                  const tileData = this.tiles.find((t) => t.id === tileId);
+                  if (
+                    tileData &&
+                    !this.areTilesCompatible(
+                      tileData,
+                      neighborTileData,
+                      direction.currentBorder,
+                      direction.neighborBorder
+                    )
+                  ) {
+                    tilesToRemove.push(tileId);
+                  }
+                }
+
+                for (const tileToRemove of tilesToRemove) {
+                  this.possibilities[y][x].delete(tileToRemove);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    console.log(
+      `[ResetArea] Successfully reset area from (${startX},${startY}) to (${endX},${endY})`
+    );
+  }
+
+  /**
+   * Reset a specific cell back to having the full set of tiles and propagate
+   * that increase in probabilities outward to neighboring cells
+   * @param x - X coordinate of the cell to reset
+   * @param y - Y coordinate of the cell to reset
+   */
+  public resetTile(x: number, y: number): void {
+    // Check bounds
+    if (!this.isInBounds(x, y)) {
+      throw new Error(`Cell (${x}, ${y}) is out of bounds`);
+    }
+
+    // Store the current state before reset
+    const stateBeforeReset = this.copyPossibilities();
+
+    try {
+      // Reset the cell to have all possible tiles
+      this.possibilities[y][x].clear();
+      for (const tile of this.tiles) {
+        this.possibilities[y][x].add(tile.id);
+      }
+
+      // Propagate the increase in possibilities outward
+      this.propagateReset(x, y);
+
+      console.log(
+        `[Reset] Successfully reset cell (${x}, ${y}) to all possibilities`
+      );
+    } catch (error) {
+      // If propagation fails, restore the previous state
+      console.log(
+        `[Reset] Reset failed for cell (${x}, ${y}): ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+      this.restorePossibilities(stateBeforeReset);
+      throw error;
+    }
+  }
+
+  /**
+   * Propagate the increase in possibilities from a reset cell outward
+   * This is the opposite of the normal propagate method - it adds possibilities
+   * rather than removing them
+   * @param startX - X coordinate of the reset cell
+   * @param startY - Y coordinate of the reset cell
+   */
+  private propagateReset(startX: number, startY: number): void {
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+      const key = `${x},${y}`;
+
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+
+      // Get the current cell's possibilities
+      const currentPossibilities = this.possibilities[y][x];
+
+      // Check all four directions
+      for (const direction of WaveFunctionCollapse.DIRECTIONS) {
+        const nx = x + direction.dx;
+        const ny = y + direction.dy;
+
+        // Check bounds
+        if (!this.isInBounds(nx, ny)) {
+          continue;
+        }
+
+        // Skip if neighbor is already collapsed
+        if (this.isCollapsed(nx, ny)) {
+          continue;
+        }
+
+        // Check if we can add any possibilities to the neighbor
+        const tilesAdded = this.addCompatibleTiles(
+          x,
+          y,
+          currentPossibilities,
+          direction
+        );
+
+        if (tilesAdded) {
+          console.log(
+            `[ResetPropagate] Added compatible tiles to (${nx}, ${ny}) due to ${direction.name} neighbor`
+          );
+          queue.push({ x: nx, y: ny });
+        }
+      }
+    }
+  }
+
+  /**
+   * Add compatible tiles to a neighboring cell based on the current cell's possibilities
+   * @param x - X coordinate of the current cell
+   * @param y - Y coordinate of the current cell
+   * @param currentPossibilities - Set of possibilities in the current cell
+   * @param direction - Direction to the neighbor
+   * @returns true if any tiles were added, false otherwise
+   */
+  private addCompatibleTiles(
+    x: number,
+    y: number,
+    currentPossibilities: Set<string>,
+    direction: (typeof WaveFunctionCollapse.DIRECTIONS)[0]
+  ): boolean {
+    const nx = x + direction.dx;
+    const ny = y + direction.dy;
+
+    // Check bounds
+    if (!this.isInBounds(nx, ny)) {
+      return false;
+    }
+
+    // Skip if neighbor is already collapsed
+    if (this.isCollapsed(nx, ny)) {
+      return false;
+    }
+
+    const neighborPossibilities = this.possibilities[ny][nx];
+    const tilesToAdd: string[] = [];
+
+    // For each tile in the current cell's possibilities
+    for (const currentTile of Array.from(currentPossibilities)) {
+      const currentTileData = this.tiles.find((t) => t.id === currentTile);
+      if (!currentTileData) continue;
+
+      // Find tiles that are compatible with this current tile
+      for (const neighborTile of this.tiles) {
+        // Skip if the neighbor already has this tile
+        if (neighborPossibilities.has(neighborTile.id)) {
+          continue;
+        }
+
+        // Check if this neighbor tile is compatible with the current tile
+        if (
+          this.areTilesCompatible(
+            currentTileData,
+            neighborTile,
+            direction.currentBorder,
+            direction.neighborBorder
+          )
+        ) {
+          tilesToAdd.push(neighborTile.id);
+        }
+      }
+    }
+
+    // Add the compatible tiles to the neighbor
+    for (const tileToAdd of tilesToAdd) {
+      neighborPossibilities.add(tileToAdd);
+    }
+
+    return tilesToAdd.length > 0;
+  }
+
   private getResult(): string[][] | null {
     // Return null for zero dimensions
     if (this.width === 0 || this.height === 0) {
@@ -772,6 +1104,13 @@ export class WaveFunctionCollapse {
    */
   public getSeed(): number {
     return this.seed;
+  }
+
+  /**
+   * Get the current contradiction count for debugging and monitoring
+   */
+  public getContradictionCount(): number {
+    return this.contradictionCount;
   }
 
   /**
