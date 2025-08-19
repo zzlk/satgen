@@ -324,8 +324,33 @@ export default function () {
               ctx.drawImage(tileCanvas, targetX, targetY);
             }
           } else if (tileId === "EMPTY") {
-            // Render transparent/empty tile
-            // Do nothing - leave it transparent
+            // Render empty tile with red X on black background
+            const emptyCanvas = document.createElement("canvas");
+            const emptyCtx = emptyCanvas.getContext("2d");
+
+            if (emptyCtx) {
+              emptyCanvas.width = tileWidth;
+              emptyCanvas.height = tileHeight;
+
+              // Fill with black background
+              emptyCtx.fillStyle = "#000000";
+              emptyCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+              // Draw red X
+              emptyCtx.strokeStyle = "#FF0000";
+              emptyCtx.lineWidth = Math.max(
+                2,
+                Math.min(tileWidth, tileHeight) / 16
+              );
+              emptyCtx.beginPath();
+              emptyCtx.moveTo(tileWidth * 0.2, tileHeight * 0.2);
+              emptyCtx.lineTo(tileWidth * 0.8, tileHeight * 0.8);
+              emptyCtx.moveTo(tileWidth * 0.8, tileHeight * 0.2);
+              emptyCtx.lineTo(tileWidth * 0.2, tileHeight * 0.8);
+              emptyCtx.stroke();
+
+              ctx.drawImage(emptyCanvas, targetX, targetY);
+            }
           } else if (tileId) {
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
@@ -472,8 +497,33 @@ export default function () {
               ctx.drawImage(tileCanvas, targetX, targetY);
             }
           } else if (tileId === "EMPTY") {
-            // Render transparent/empty tile
-            // Do nothing - leave it transparent
+            // Render empty tile with red X on black background
+            const emptyCanvas = document.createElement("canvas");
+            const emptyCtx = emptyCanvas.getContext("2d");
+
+            if (emptyCtx) {
+              emptyCanvas.width = tileWidth;
+              emptyCanvas.height = tileHeight;
+
+              // Fill with black background
+              emptyCtx.fillStyle = "#000000";
+              emptyCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+              // Draw red X
+              emptyCtx.strokeStyle = "#FF0000";
+              emptyCtx.lineWidth = Math.max(
+                2,
+                Math.min(tileWidth, tileHeight) / 16
+              );
+              emptyCtx.beginPath();
+              emptyCtx.moveTo(tileWidth * 0.2, tileHeight * 0.2);
+              emptyCtx.lineTo(tileWidth * 0.8, tileHeight * 0.8);
+              emptyCtx.moveTo(tileWidth * 0.8, tileHeight * 0.2);
+              emptyCtx.lineTo(tileWidth * 0.2, tileHeight * 0.8);
+              emptyCtx.stroke();
+
+              ctx.drawImage(emptyCanvas, targetX, targetY);
+            }
           } else if (tileId) {
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
