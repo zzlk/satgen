@@ -174,7 +174,10 @@ export default function () {
 
         // Render partial result
         if (partialResult.arrangement && partialResult.arrangement.length > 0) {
-          await renderPartialResultFromArrangement(partialResult.arrangement);
+          await renderPartialResultFromArrangement(
+            partialResult.arrangement,
+            partialResult.lastCollapsedCells
+          );
         }
 
         // Small delay to allow UI updates
@@ -258,7 +261,15 @@ export default function () {
   );
 
   const renderPartialResultFromArrangement = useCallback(
-    async (arrangement: string[][]) => {
+    async (
+      arrangement: string[][],
+      lastCollapsedCells?: Array<{
+        x: number;
+        y: number;
+        tile: string;
+        iteration: number;
+      }>
+    ) => {
       if (!arrangement || arrangement.length === 0) return;
 
       const targetWidth = synthesizeWidth * tileWidth;
@@ -341,6 +352,56 @@ export default function () {
                 });
               }
             }
+          }
+        }
+      }
+
+      // Add colored overlays for last collapsed cells
+      // This creates a visual progression showing the algorithm's recent decisions
+      // Each cell gets a different color based on when it was collapsed
+      // Newer cells have higher opacity and are more visible
+      if (lastCollapsedCells && lastCollapsedCells.length > 0) {
+        for (let i = 0; i < lastCollapsedCells.length; i++) {
+          const cell = lastCollapsedCells[i];
+          const targetX = cell.x * tileWidth;
+          const targetY = cell.y * tileHeight;
+
+          // Calculate color based on position in the array (newer = more saturated)
+          const alpha = 0.2 + (i / lastCollapsedCells.length) * 0.3; // 0.2 to 0.5 opacity
+          const hue = (i * 45) % 360; // Different hue for each cell (0-315 degrees)
+
+          // Create overlay canvas
+          const overlayCanvas = document.createElement("canvas");
+          const overlayCtx = overlayCanvas.getContext("2d");
+
+          if (overlayCtx) {
+            overlayCanvas.width = tileWidth;
+            overlayCanvas.height = tileHeight;
+
+            // Create colored overlay
+            overlayCtx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+            overlayCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+            // Add border
+            overlayCtx.strokeStyle = `hsla(${hue}, 80%, 40%, 0.8)`;
+            overlayCtx.lineWidth = 2;
+            overlayCtx.strokeRect(0, 0, tileWidth, tileHeight);
+
+            // Add iteration number
+            overlayCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            overlayCtx.font = `bold ${
+              Math.min(tileWidth, tileHeight) / 5
+            }px Arial`;
+            overlayCtx.textAlign = "center";
+            overlayCtx.textBaseline = "middle";
+            overlayCtx.fillText(
+              cell.iteration.toString(),
+              tileWidth / 2,
+              tileHeight / 2
+            );
+
+            // Draw the overlay
+            ctx.drawImage(overlayCanvas, targetX, targetY);
           }
         }
       }

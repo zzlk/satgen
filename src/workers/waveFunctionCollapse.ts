@@ -14,12 +14,21 @@ export interface TileData {
   };
 }
 
+// todo: keep track of last 10 completed cells, render them with increasingly darker colors.
+// extract out propagate and generate recursive to stand alone functions.
+
 export interface PartialResult {
   arrangement: string[][] | null;
   collapsedCells: number;
   totalCells: number;
   iteration: number;
   lastCollapsedCell?: { x: number; y: number; tile: string };
+  lastCollapsedCells: Array<{
+    x: number;
+    y: number;
+    tile: string;
+    iteration: number;
+  }>;
   isComplete: boolean;
 }
 
@@ -47,6 +56,12 @@ export class WaveFunctionCollapse {
   private height: number;
   private possibilities: Set<string>[][];
   private seed: number;
+  private lastCollapsedCells: Array<{
+    x: number;
+    y: number;
+    tile: string;
+    iteration: number;
+  }> = [];
 
   // Shared direction definitions
   private static readonly DIRECTIONS = [
@@ -170,6 +185,7 @@ export class WaveFunctionCollapse {
         collapsedCells: this.width * this.height,
         totalCells: this.width * this.height,
         iteration: iteration,
+        lastCollapsedCells: [...this.lastCollapsedCells],
         isComplete: true,
       };
       return result;
@@ -213,6 +229,9 @@ export class WaveFunctionCollapse {
           console.log(
             `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
           );
+
+          // Track the collapsed cell
+          this.trackCollapsedCell(cell.x, cell.y, tileToTry, iteration);
 
           // Recursively continue with the next iteration
           const result = yield* this.generateRecursive(iteration);
@@ -267,6 +286,7 @@ export class WaveFunctionCollapse {
         collapsedCells: 0,
         totalCells: 0,
         iteration,
+        lastCollapsedCells: [...this.lastCollapsedCells],
         isComplete: true,
       };
     }
@@ -297,6 +317,7 @@ export class WaveFunctionCollapse {
       totalCells: this.width * this.height,
       iteration,
       lastCollapsedCell,
+      lastCollapsedCells: [...this.lastCollapsedCells],
       isComplete: false,
     };
   }
@@ -530,6 +551,8 @@ export class WaveFunctionCollapse {
       console.log(
         `[Propagate] Cell (${nx}, ${ny}) collapsed to ${collapsedTile} due to constraint propagation`
       );
+      // Track the collapsed cell (use current iteration for propagation collapses)
+      this.trackCollapsedCell(nx, ny, collapsedTile, 0); // Use 0 for propagation collapses
     }
 
     return tilesToRemove.length > 0;
@@ -725,6 +748,23 @@ export class WaveFunctionCollapse {
     }
 
     return result;
+  }
+
+  /**
+   * Track a newly collapsed cell
+   */
+  private trackCollapsedCell(
+    x: number,
+    y: number,
+    tile: string,
+    iteration: number
+  ): void {
+    this.lastCollapsedCells.push({ x, y, tile, iteration });
+
+    // Keep only the last 10 collapsed cells
+    if (this.lastCollapsedCells.length > 4) {
+      this.lastCollapsedCells = this.lastCollapsedCells.slice(-4);
+    }
   }
 
   /**

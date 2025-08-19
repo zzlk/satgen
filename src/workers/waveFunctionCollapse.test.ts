@@ -610,4 +610,42 @@ describe("WaveFunctionCollapse", () => {
       }
     });
   });
+
+  test("should track last 10 collapsed cells during generation", () => {
+    const wfc = new WaveFunctionCollapse(simpleTiles, 3, 3, 0);
+    const generator = wfc.generateWithProgress();
+    let lastPartialResult: any = null;
+    let result: string[][] | null = null;
+
+    // Process the generator to get partial results
+    while (true) {
+      const next = generator.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+      lastPartialResult = next.value;
+    }
+
+    // Verify that we have a result
+    expect(result).not.toBeNull();
+    expect(lastPartialResult).not.toBeNull();
+
+    // Verify that lastCollapsedCells is present and has the correct structure
+    expect(lastPartialResult.lastCollapsedCells).toBeDefined();
+    expect(Array.isArray(lastPartialResult.lastCollapsedCells)).toBe(true);
+    expect(lastPartialResult.lastCollapsedCells.length).toBeLessThanOrEqual(10);
+
+    // Verify the structure of each collapsed cell
+    for (const cell of lastPartialResult.lastCollapsedCells) {
+      expect(cell).toHaveProperty("x");
+      expect(cell).toHaveProperty("y");
+      expect(cell).toHaveProperty("tile");
+      expect(cell).toHaveProperty("iteration");
+      expect(typeof cell.x).toBe("number");
+      expect(typeof cell.y).toBe("number");
+      expect(typeof cell.tile).toBe("string");
+      expect(typeof cell.iteration).toBe("number");
+    }
+  });
 });
