@@ -38,6 +38,7 @@ export default function () {
   const [partialResultImage, setPartialResultImage] = useState<string | null>(
     null
   );
+  const [sleepTime, setSleepTime] = useState<number>(500);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -181,7 +182,7 @@ export default function () {
         }
 
         // Small delay to allow UI updates
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, sleepTime));
       }
 
       if (result) {
@@ -694,6 +695,46 @@ export default function () {
                 >
                   🎲
                 </button>
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">
+                Animation Speed: {sleepTime}ms
+              </label>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <input
+                  type="range"
+                  min="0"
+                  max="2000"
+                  step="50"
+                  value={sleepTime}
+                  onChange={(e) => setSleepTime(parseInt(e.target.value))}
+                  className="speed-slider"
+                  title="Adjust animation speed during synthesis"
+                />
+                <span
+                  style={{ fontSize: "12px", color: "#666", minWidth: "40px" }}
+                >
+                  {sleepTime}ms
+                </span>
+              </div>
+              <div
+                style={{ fontSize: "11px", color: "#888", marginTop: "4px" }}
+              >
+                {sleepTime === 0
+                  ? "No delay (fastest)"
+                  : sleepTime <= 100
+                  ? "Very fast"
+                  : sleepTime <= 300
+                  ? "Fast"
+                  : sleepTime <= 700
+                  ? "Normal"
+                  : sleepTime <= 1000
+                  ? "Slow"
+                  : "Very slow"}
               </div>
             </div>
 
