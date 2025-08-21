@@ -14,8 +14,8 @@ import type {
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [tileWidth, setTileWidth] = useState<number>(64);
-  const [tileHeight, setTileHeight] = useState<number>(64);
+  const [tileWidth, setTileWidth] = useState<number>(32);
+  const [tileHeight, setTileHeight] = useState<number>(32);
   const [tileCollection, setTileCollection] = useState<TileCollection | null>(
     null
   );

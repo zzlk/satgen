@@ -379,8 +379,8 @@ describe("WaveFunctionCollapse", () => {
 
       wfc["getSortedCellsByEntropy"] = function () {
         const result = originalMethod();
-        if (result.length > 0) {
-          entropyCalls.push(...result);
+        if (result.success && result.cells.length > 0) {
+          entropyCalls.push(...result.cells);
         }
         return result;
       };
@@ -1247,7 +1247,9 @@ describe("WaveFunctionCollapse", () => {
 
       wfc["getSortedCellsByEntropy"] = function () {
         const result = originalMethod();
-        cellSelectionOrders.push([...result]);
+        if (result.success) {
+          cellSelectionOrders.push([...result.cells]);
+        }
         return result;
       };
 

@@ -32,6 +32,38 @@ export interface PartialResult {
   isComplete: boolean;
 }
 
+// Result type to unify contradiction handling
+type GenerationResult =
+  | {
+      success: true;
+      arrangement: string[][];
+    }
+  | {
+      success: false;
+      reason: string;
+    };
+
+// Result type for operations that don't return arrangements
+type OperationResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      reason: string;
+    };
+
+// Result type for getSortedCellsByEntropy
+type CellsResult =
+  | {
+      success: true;
+      cells: Array<{ x: number; y: number; entropy: number }>;
+    }
+  | {
+      success: false;
+      reason: string;
+    };
+
 /**
  * Wave Function Collapse Algorithm Implementation
  *
@@ -49,6 +81,7 @@ export interface PartialResult {
  * - Using shared direction definitions
  * - Extracting common utility methods for constraint checking
  * - Centralizing bounds checking and tile compatibility logic
+ * - Unifying contradiction handling through return values instead of exceptions
  */
 export class WaveFunctionCollapse {
   private tiles: TileData[];
@@ -118,7 +151,10 @@ export class WaveFunctionCollapse {
 
     // Perform initial constraint propagation only if there are tiles
     if (this.tiles.length > 0 && this.width > 0 && this.height > 0) {
-      this.performInitialPropagation();
+      const initialResult = this.performInitialPropagation();
+      if (!initialResult.success) {
+        console.log(`[Initial] ${initialResult.reason}`);
+      }
     }
   }
 
@@ -140,20 +176,12 @@ export class WaveFunctionCollapse {
     this.contradictionCount = 0;
     console.log(`[Start] Contradiction counter reset to 0`);
 
-    try {
-      const result = yield* this.generateRecursive(0);
-      if (result === null) {
-        console.log(`[Failure] No valid arrangement possible`);
-        return null;
-      }
-      return result;
-    } catch (error) {
-      console.log(`Generation failed: ${error}`);
-      console.log(
-        `Failed to generate arrangement - no valid arrangement possible`
-      );
+    const result = yield* this.generateRecursive(0);
+    if (!result.success) {
+      console.log(`[Failure] ${result.reason}`);
       return null;
     }
+    return result.arrangement;
   }
 
   /**
@@ -163,26 +191,34 @@ export class WaveFunctionCollapse {
    */
   private *generateRecursive(
     iteration: number
-  ): Generator<PartialResult, string[][] | null, unknown> {
+  ): Generator<PartialResult, GenerationResult, unknown> {
     iteration++;
 
     // Get sorted list of cells by entropy (lowest first) with shuffling based on contradiction count
-    const cells = this.getSortedCellsByEntropy();
+    const cellsResult = this.getSortedCellsByEntropy();
+    if (!cellsResult.success) {
+      return cellsResult;
+    }
+
+    const cells = cellsResult.cells;
     if (cells.length === 0) {
       // All cells are collapsed, we're done!
       console.log(
         `[Success] All cells collapsed after ${iteration} iterations`
       );
       const result = this.getResult();
+      if (!result.success) {
+        return result;
+      }
       yield {
-        arrangement: result,
+        arrangement: result.arrangement,
         collapsedCells: this.width * this.height,
         totalCells: this.width * this.height,
         iteration: iteration,
         lastCollapsedCells: [...this.lastCollapsedCells],
         isComplete: true,
       };
-      return result;
+      return { success: true, arrangement: result.arrangement };
     }
 
     // Loop through each cell in order of entropy
@@ -190,7 +226,7 @@ export class WaveFunctionCollapse {
       const cell = this.getRandomNonCollapsedCell();
       if (!cell) {
         console.log(`[Failure] No non-collapsed cells found`);
-        break;
+        return { success: false, reason: "No non-collapsed cells found" };
       }
 
       console.log(`[Decision] Trying cell (${cell.x}, ${cell.y})`);
@@ -215,56 +251,16 @@ export class WaveFunctionCollapse {
         // Store the current state before attempting collapse
         const stateBeforeCollapse = this.copyPossibilities();
 
-        try {
-          // Manually collapse the cell to the chosen tile
-          this.possibilities[cell.y][cell.x].clear();
-          this.possibilities[cell.y][cell.x].add(tileToTry);
+        // Manually collapse the cell to the chosen tile
+        this.possibilities[cell.y][cell.x].clear();
+        this.possibilities[cell.y][cell.x].add(tileToTry);
 
-          // Propagate the changes to neighboring cells
-          this.propagate(cell.x, cell.y);
-
-          // If we reach here, the collapse was successful
-          console.log(
-            `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
-          );
-
-          // Track the collapsed cell
-          this.trackCollapsedCell(cell.x, cell.y, tileToTry, iteration);
-
-          // Recursively continue with the next iteration
-          const result = yield* this.generateRecursive(iteration);
-
-          if (result !== null) {
-            // Success! Return the result
-            return result;
-          } else {
-            // This branch failed, restore state and try next possibility
-            console.log(
-              `[Backtrack] Branch failed for cell (${cell.x}, ${cell.y}), restoring state and trying next possibility`
-            );
-
-            // Increment contradiction counter for shuffling (backtracking is also a form of contradiction)
-            this.contradictionCount++;
-            console.log(
-              `[Backtrack] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
-            );
-
-            this.restorePossibilities(stateBeforeCollapse);
-
-            // Yield partial result after backtracking
-            const partialResult = this.getPartialResult(iteration);
-            yield partialResult;
-          }
-        } catch (error) {
-          this.lastCollapsedCells.pop();
-
+        // Propagate the changes to neighboring cells
+        const propagateResult = this.propagate(cell.x, cell.y);
+        if (!propagateResult.success) {
           // Contradiction detected, restore the previous state
           console.log(
-            `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${
-              cell.y
-            }) caused contradiction: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
+            `[Contradiction] Tile ${tileToTry} at (${cell.x}, ${cell.y}) caused contradiction: ${propagateResult.reason}`
           );
 
           // Increment contradiction counter for shuffling
@@ -276,31 +272,55 @@ export class WaveFunctionCollapse {
           // Restore the previous state first
           this.restorePossibilities(stateBeforeCollapse);
 
-          // // Reset a 3x3 area around the contradiction to prevent getting stuck
-          // try {
-          //   this.resetArea(cell.x, cell.y);
-          //   console.log(
-          //     `[Contradiction] Reset 3x3 area around (${cell.x}, ${cell.y}) to prevent getting stuck`
-          //   );
-          // } catch (resetError) {
-          //   console.log(
-          //     `[Contradiction] Failed to reset area around (${cell.x}, ${cell.y}): ${resetError}`
-          //   );
-          //   // Continue even if reset fails
-          // }
-
           // Yield partial result after contradiction
           const partialResult = this.getPartialResult(iteration);
           yield partialResult;
 
           // Continue to next possibility in the inner loop
+          continue;
+        }
+
+        // If we reach here, the collapse was successful
+        console.log(
+          `[Success] Successfully collapsed cell (${cell.x}, ${cell.y}) to tile: ${tileToTry}`
+        );
+
+        // Track the collapsed cell
+        this.trackCollapsedCell(cell.x, cell.y, tileToTry, iteration);
+
+        // Recursively continue with the next iteration
+        const result = yield* this.generateRecursive(iteration);
+
+        if (result.success) {
+          // Success! Return the result
+          return result;
+        } else {
+          // This branch failed, restore state and try next possibility
+          console.log(
+            `[Backtrack] Branch failed for cell (${cell.x}, ${cell.y}): ${result.reason}`
+          );
+
+          // Increment contradiction counter for shuffling (backtracking is also a form of contradiction)
+          this.contradictionCount++;
+          console.log(
+            `[Backtrack] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
+          );
+
+          this.restorePossibilities(stateBeforeCollapse);
+
+          // Yield partial result after backtracking
+          const partialResult = this.getPartialResult(iteration);
+          yield partialResult;
         }
       }
     }
 
     // If we get here, all cells and all possibilities have been exhausted
     console.log(`[Failure] All possibilities exhausted for all cells`);
-    return null;
+    return {
+      success: false,
+      reason: "All possibilities exhausted for all cells",
+    };
   }
 
   /**
@@ -397,11 +417,7 @@ export class WaveFunctionCollapse {
   /**
    * Get all uncollapsed cells in random order based on contradiction count
    */
-  private getSortedCellsByEntropy(): Array<{
-    x: number;
-    y: number;
-    entropy: number;
-  }> {
+  private getSortedCellsByEntropy(): CellsResult {
     const cells: Array<{ x: number; y: number; entropy: number }> = [];
 
     for (let y = 0; y < this.height; y++) {
@@ -410,7 +426,10 @@ export class WaveFunctionCollapse {
           const entropy = this.possibilities[y][x].size;
           if (entropy === 0) {
             // Contradiction: cell has no possibilities
-            throw new Error(`Cell (${x}, ${y}) has no possibilities`);
+            return {
+              success: false,
+              reason: `Cell (${x}, ${y}) has no possibilities`,
+            };
           }
           cells.push({ x, y, entropy });
         }
@@ -418,7 +437,7 @@ export class WaveFunctionCollapse {
     }
 
     // Return cells in random order based on contradiction count
-    return this.shuffleCells(cells);
+    return { success: true, cells: this.shuffleCells(cells) };
   }
 
   private getRandomNonCollapsedCell():
@@ -556,18 +575,22 @@ export class WaveFunctionCollapse {
     y: number,
     currentTile: string,
     direction: (typeof WaveFunctionCollapse.DIRECTIONS)[0]
-  ): boolean {
+  ): { success: boolean; tilesRemoved: boolean; reason?: string } {
     const nx = x + direction.dx;
     const ny = y + direction.dy;
 
     // Check bounds
     if (!this.isInBounds(nx, ny)) {
-      return false;
+      return {
+        success: false,
+        tilesRemoved: false,
+        reason: `Bounds error for neighbor (${nx}, ${ny})`,
+      };
     }
 
     // Skip if neighbor is already collapsed
     if (this.isCollapsed(nx, ny)) {
-      return false;
+      return { success: true, tilesRemoved: false };
     }
 
     const neighborPossibilities = this.possibilities[ny][nx];
@@ -599,9 +622,11 @@ export class WaveFunctionCollapse {
 
     // Check for contradiction
     if (neighborPossibilities.size === 0) {
-      throw new Error(
-        `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`
-      );
+      return {
+        success: false,
+        tilesRemoved: false,
+        reason: `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`,
+      };
     }
 
     // Log if a cell was collapsed during propagation
@@ -614,14 +639,14 @@ export class WaveFunctionCollapse {
       this.trackCollapsedCell(nx, ny, collapsedTile, 0); // Use 0 for propagation collapses
     }
 
-    return tilesToRemove.length > 0;
+    return { success: true, tilesRemoved: tilesToRemove.length > 0 };
   }
 
   /**
    * Perform initial constraint propagation to ensure all cells start with
    * possibilities that are compatible with their neighbors
    */
-  private performInitialPropagation(): void {
+  private performInitialPropagation(): OperationResult {
     // Create a queue of all cells that need to be checked
     const queue: Array<{ x: number; y: number }> = [];
 
@@ -697,11 +722,13 @@ export class WaveFunctionCollapse {
 
       // Check for contradiction
       if (this.possibilities[y][x].size === 0) {
-        throw new Error(
-          `Initial propagation contradiction: cell (${x}, ${y}) has no possibilities`
-        );
+        return {
+          success: false,
+          reason: `Initial propagation contradiction: cell (${x}, ${y}) has no possibilities`,
+        };
       }
     }
+    return { success: true };
   }
 
   /**
@@ -735,7 +762,7 @@ export class WaveFunctionCollapse {
     return shuffled;
   }
 
-  private propagate(startX: number, startY: number): void {
+  private propagate(startX: number, startY: number): OperationResult {
     const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
     const visited = new Set<string>();
 
@@ -771,14 +798,23 @@ export class WaveFunctionCollapse {
         }
 
         // Remove incompatible tiles and check if any were removed
-        const tilesRemoved = this.removeIncompatibleTiles(
+        const tilesRemovedResult = this.removeIncompatibleTiles(
           x,
           y,
           currentTile,
           direction
         );
 
-        if (tilesRemoved) {
+        if (!tilesRemovedResult.success) {
+          return {
+            success: false,
+            reason:
+              tilesRemovedResult.reason ||
+              "Unknown error in removeIncompatibleTiles",
+          };
+        }
+
+        if (tilesRemovedResult.tilesRemoved) {
           console.log(
             `[Propagate] Removed incompatible tiles from (${nx}, ${ny}) due to ${direction.name} neighbor (${currentTile})`
           );
@@ -786,6 +822,7 @@ export class WaveFunctionCollapse {
         }
       }
     }
+    return { success: true };
   }
 
   /**
@@ -1028,10 +1065,10 @@ export class WaveFunctionCollapse {
     return tilesToAdd.length > 0;
   }
 
-  private getResult(): string[][] | null {
+  private getResult(): GenerationResult {
     // Return null for zero dimensions
     if (this.width === 0 || this.height === 0) {
-      return null;
+      return { success: false, reason: "Grid dimensions are zero" };
     }
 
     const result: string[][] = [];
@@ -1040,13 +1077,16 @@ export class WaveFunctionCollapse {
       result[y] = [];
       for (let x = 0; x < this.width; x++) {
         if (!this.isCollapsed(x, y)) {
-          throw new Error(`Cell (${x}, ${y}) is not collapsed in final result`);
+          return {
+            success: false,
+            reason: `Cell (${x}, ${y}) is not collapsed in final result`,
+          };
         }
         result[y][x] = this.getCollapsedTile(x, y);
       }
     }
 
-    return result;
+    return { success: true, arrangement: result };
   }
 
   /**
