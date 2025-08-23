@@ -1,17 +1,16 @@
-import { describe, test, expect } from "vitest";
-
-const DIRECTIONS = [
-  { d: 0, dx: 0, dy: 1 }, // north
-  { d: 1, dx: 1, dy: 0 }, // east
-  { d: 2, dx: 0, dy: -1 }, // south
-  { d: 3, dx: -1, dy: 0 }, // west
-];
-
-const INVERSE_DIRECTIONS = [
-  { d: 0, dx: 0, dy: -1 }, // south to north border
-  { d: 1, dx: -1, dy: 0 }, // west to east border
-  { d: 2, dx: 0, dy: 1 }, // north to south border
-  { d: 3, dx: 1, dy: 0 }, // east to west border
+const DIRECTIONS: Array<{
+  name: string;
+  oppositeName: string;
+  d: number;
+  dx: number;
+  dy: number;
+  idx: number;
+  idy: number;
+}> = [
+  { name: "north", oppositeName: "south", d: 0, dx: 0, dy: 1, idx: 0, idy: -1 },
+  { name: "east", oppositeName: "west", d: 1, dx: 1, dy: 0, idx: -1, idy: 0 },
+  { name: "south", oppositeName: "north", d: 2, dx: 0, dy: -1, idx: 0, idy: 1 },
+  { name: "west", oppositeName: "east", d: 3, dx: -1, dy: 0, idx: 1, idy: 0 },
 ];
 
 function propagateRemoval(
@@ -39,9 +38,9 @@ function propagateRemoval(
       throw "invalid";
     }
 
-    for (let direction of INVERSE_DIRECTIONS) {
-      const nx = x + direction.dx;
-      const ny = y + direction.dy;
+    for (let direction of DIRECTIONS) {
+      const nx = x + direction.idx;
+      const ny = y + direction.idy;
 
       if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
         const neighbor = cells[ny * width + nx];
@@ -83,43 +82,55 @@ function* WaveFunctionGenerateInternal(
   seed: number,
   cells: Array<Set<string>>
 ): Generator<Array<Set<string>>, Array<string> | null> {
+  // base case, entire cell array is collapsed.
+  if (cells.every((c) => c.size === 1)) {
+    return cells.map((c) => c.keys().next().value!);
+  }
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       let cell = cells[y * width + x];
 
-      if (cell.size > 1) {
-        // collapse this cell.
-        let possibleTiles = Array.from(cell);
+      switch (cell.size) {
+        case 0:
+          throw "invalid precondition";
 
-        for (const tile of possibleTiles) {
-          // deep clone cells:
-          const backup = cells.map((c) => new Set(c));
+        case 1:
+          continue;
 
-          cell.clear();
-          cell.add(tile);
+        default:
+          // collapse this cell.
+          let possibleTiles = Array.from(cell);
 
-          // propagate the effects of the removal
-          if (!propagateRemoval(tiles, width, height, cells, x, y)) {
-            // placing this tile was unsatisfiable, restore the previous state
-            cells = backup;
-            continue;
+          for (const tile of possibleTiles) {
+            // deep clone cells:
+            const backup = cells.map((c) => new Set(c));
+
+            cell.clear();
+            cell.add(tile);
+
+            // propagate the effects of the removal
+            if (!propagateRemoval(tiles, width, height, cells, x, y)) {
+              // placing this tile was unsatisfiable, restore the previous state
+              cells = backup;
+              continue;
+            }
+
+            yield cells;
+
+            // recurse
+            const ret = yield* WaveFunctionGenerateInternal(
+              tiles,
+              width,
+              height,
+              seed,
+              cells
+            );
+
+            if (ret !== null) {
+              return ret;
+            }
           }
-
-          yield cells;
-
-          // recurse
-          const ret = yield* WaveFunctionGenerateInternal(
-            tiles,
-            width,
-            height,
-            seed,
-            cells
-          );
-
-          if (ret !== null) {
-            return ret;
-          }
-        }
       }
     }
   }
@@ -134,6 +145,24 @@ export function* gen(
   height: number,
   seed: number
 ): Generator<Array<Set<string>>, Array<string> | null> {
+  // Validate that tile connections are commutative
+  for (const [tileA, connectionsA] of tiles) {
+    for (const direction of DIRECTIONS) {
+      const oppositeDirection = (direction.d + 2) % 4;
+
+      for (const tileB of connectionsA[direction.d]) {
+        if (!tiles.has(tileB)) {
+          throw `Tile '${tileA}' references non-existent tile '${tileB}' in direction ${direction.name}`;
+        }
+
+        const connectionsB = tiles.get(tileB)!;
+        if (!connectionsB[oppositeDirection].has(tileA)) {
+          throw `Non-commutative connection: Tile '${tileA}' can connect to '${tileB}' on ${direction.name}, but '${tileB}' cannot connect to '${tileA}' on ${direction.oppositeName}`;
+        }
+      }
+    }
+  }
+
   const cells = new Array(width * height)
     .fill(null)
     .map(() => new Set(tiles.keys()));
