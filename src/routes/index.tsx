@@ -387,14 +387,14 @@ export default function () {
       // Each cell gets a different color based on when it was collapsed
       // Newer cells have higher opacity and are more visible
       if (lastCollapsedCells && lastCollapsedCells.length > 0) {
-        for (let i = 0; i < lastCollapsedCells.length; i++) {
-          const cell = lastCollapsedCells[i];
+        for (let i = 0; i < Math.min(lastCollapsedCells.length, 5); i++) {
+          const cell = lastCollapsedCells[lastCollapsedCells.length - i - 1];
           const targetX = cell.x * tileWidth;
           const targetY = cell.y * tileHeight;
 
-          // Calculate color based on position in the array (newer = more saturated)
-          const alpha = 0.2 + (i / lastCollapsedCells.length) * 0.3; // 0.2 to 0.5 opacity
-          const hue = (i * 45) % 360; // Different hue for each cell (0-315 degrees)
+          // // Calculate color based on position in the array (newer = more saturated)
+          // const alpha = 0.2 + (i / lastCollapsedCells.length) * 0.3; // 0.2 to 0.5 opacity
+          // const hue = (i * 45) % 360; // Different hue for each cell (0-315 degrees)
 
           // Create overlay canvas
           const overlayCanvas = document.createElement("canvas");
@@ -404,27 +404,23 @@ export default function () {
             overlayCanvas.width = tileWidth;
             overlayCanvas.height = tileHeight;
 
-            // Create colored overlay
-            overlayCtx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
-            overlayCtx.fillRect(0, 0, tileWidth, tileHeight);
+            // // Create colored overlay
+            // overlayCtx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+            // overlayCtx.fillRect(0, 0, tileWidth, tileHeight);
 
-            // Add border
-            overlayCtx.strokeStyle = `hsla(${hue}, 80%, 40%, 0.8)`;
-            overlayCtx.lineWidth = 2;
-            overlayCtx.strokeRect(0, 0, tileWidth, tileHeight);
+            // // Add border
+            // overlayCtx.strokeStyle = `hsla(${hue}, 80%, 40%, 0.8)`;
+            // overlayCtx.lineWidth = 2;
+            // overlayCtx.strokeRect(0, 0, tileWidth, tileHeight);
 
             // Add iteration number
             overlayCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
             overlayCtx.font = `bold ${
-              Math.min(tileWidth, tileHeight) / 5
+              Math.min(tileWidth, tileHeight) / 3
             }px Arial`;
             overlayCtx.textAlign = "center";
             overlayCtx.textBaseline = "middle";
-            overlayCtx.fillText(
-              cell.iteration.toString(),
-              tileWidth / 2,
-              tileHeight / 2
-            );
+            overlayCtx.fillText(i.toString(), tileWidth / 2, tileHeight / 2);
 
             // Draw the overlay
             ctx.drawImage(overlayCanvas, targetX, targetY);

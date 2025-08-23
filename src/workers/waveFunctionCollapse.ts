@@ -222,18 +222,12 @@ export class WaveFunctionCollapse {
     }
 
     // Loop through each cell in order of entropy
-    while (true) {
-      const cell = this.getRandomNonCollapsedCell();
-      if (!cell) {
-        console.log(`[Failure] No non-collapsed cells found`);
-        return { success: false, reason: "No non-collapsed cells found" };
-      }
-
+    for (const cell of cells) {
       console.log(`[Decision] Trying cell (${cell.x}, ${cell.y})`);
 
       const availablePossibilities = Array.from(
         this.possibilities[cell.y][cell.x]
-      );
+      ).sort();
 
       // Shuffle the possibilities based on seed and cell position
       const shuffledPossibilities = this.shuffleArray(
@@ -269,16 +263,19 @@ export class WaveFunctionCollapse {
             `[Contradiction] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
           );
 
-          // Restore the previous state first
-          this.restorePossibilities(stateBeforeCollapse);
-
-          // Yield partial result after contradiction
+          // // Yield partial result after contradiction
           const partialResult = this.getPartialResult(iteration);
           yield partialResult;
+
+          // Restore the previous state first
+          this.restorePossibilities(stateBeforeCollapse);
 
           // Continue to next possibility in the inner loop
           continue;
         }
+
+        // const partialResult = this.getPartialResult(iteration);
+        // yield partialResult;
 
         // If we reach here, the collapse was successful
         console.log(
@@ -290,27 +287,11 @@ export class WaveFunctionCollapse {
 
         // Recursively continue with the next iteration
         const result = yield* this.generateRecursive(iteration);
-
         if (result.success) {
           // Success! Return the result
           return result;
         } else {
-          // This branch failed, restore state and try next possibility
-          console.log(
-            `[Backtrack] Branch failed for cell (${cell.x}, ${cell.y}): ${result.reason}`
-          );
-
-          // Increment contradiction counter for shuffling (backtracking is also a form of contradiction)
-          this.contradictionCount++;
-          console.log(
-            `[Backtrack] Contradiction count: ${this.contradictionCount} - cells will be shuffled for next iteration`
-          );
-
-          this.restorePossibilities(stateBeforeCollapse);
-
-          // Yield partial result after backtracking
-          const partialResult = this.getPartialResult(iteration);
-          yield partialResult;
+          this.lastCollapsedCells.pop();
         }
       }
     }
@@ -451,13 +432,17 @@ export class WaveFunctionCollapse {
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         if (!this.isCollapsed(x, y)) {
-          cells.push({ x, y });
+          // cells.push({ x, y });
+          return { x, y };
         }
       }
     }
 
+    return undefined;
+
     // Return cells in random order based on contradiction count
-    return this.shuffleCells(cells).pop();
+    // return this.shuffleCells(cells).pop();
+    // return cells.pop();
   }
 
   /**
@@ -627,16 +612,6 @@ export class WaveFunctionCollapse {
         tilesRemoved: false,
         reason: `Contradiction: cell (${nx}, ${ny}) has no possibilities after propagation`,
       };
-    }
-
-    // Log if a cell was collapsed during propagation
-    if (tilesToRemove.length > 0 && neighborPossibilities.size === 1) {
-      const collapsedTile = Array.from(neighborPossibilities)[0];
-      console.log(
-        `[Propagate] Cell (${nx}, ${ny}) collapsed to ${collapsedTile} due to constraint propagation`
-      );
-      // Track the collapsed cell (use current iteration for propagation collapses)
-      this.trackCollapsedCell(nx, ny, collapsedTile, 0); // Use 0 for propagation collapses
     }
 
     return { success: true, tilesRemoved: tilesToRemove.length > 0 };
@@ -1101,9 +1076,9 @@ export class WaveFunctionCollapse {
     this.lastCollapsedCells.push({ x, y, tile, iteration });
 
     // Keep only the last 10 collapsed cells
-    if (this.lastCollapsedCells.length > 4) {
-      this.lastCollapsedCells = this.lastCollapsedCells.slice(-4);
-    }
+    // if (this.lastCollapsedCells.length > 5) {
+    //   this.lastCollapsedCells = this.lastCollapsedCells.slice(-5);
+    // }
   }
 
   /**

@@ -3,10 +3,10 @@
     "./src/**/*",
   ],
   "compilerOptions": {
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "types": ["node", "vite/client"],
-    "target": "ES2022",
-    "module": "ES2022",
+    "target": "es2024",
+    "module": "es2022",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "rootDirs": ["."],
