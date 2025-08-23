@@ -25,40 +25,48 @@ function propagateRemoval(
 
   // Push the four neighbors of {x, y}
   for (const direction of DIRECTIONS) {
-    queue.push({ x: x + direction.dx, y: y + direction.dy });
+    const dx = x + direction.dx;
+    const dy = y + direction.dy;
+
+    if (dx < 0 || dx >= width || dy < 0 || dy >= height) {
+      continue;
+    }
+
+    queue.push({ x: dx, y: dy });
   }
 
   while (queue.length > 0) {
     let { x, y } = queue.shift()!;
 
-    let cell = cells[y * width + x];
-    const cellPossibilities = cell.size;
+    const cellPossibilities = cells[y * width + x].size;
 
     if (cellPossibilities === 0) {
       throw "invalid";
     }
 
     for (let direction of DIRECTIONS) {
-      const nx = x + direction.idx;
-      const ny = y + direction.idy;
+      const nx = x - direction.dx;
+      const ny = y - direction.dy;
 
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        const neighbor = cells[ny * width + nx];
-        const support = new Set<string>();
-        for (const tile of neighbor) {
-          for (const e of tiles.get(tile)![direction.d]!) {
-            support.add(e);
-          }
-        }
-
-        // remove unsupported tiles.
-        cells[y * width + x] = cell.intersection(support);
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
       }
+
+      const neighbor = cells[ny * width + nx];
+      const support = new Set<string>();
+      for (const tile of neighbor) {
+        for (const e of tiles.get(tile)![direction.d]!) {
+          support.add(e);
+        }
+      }
+
+      // remove unsupported tiles.
+      cells[y * width + x] = cells[y * width + x].intersection(support);
     }
 
     // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
-    if (cell.size !== cellPossibilities) {
-      if (cell.size === 0) {
+    if (cells[y * width + x].size !== cellPossibilities) {
+      if (cells[y * width + x].size === 0) {
         return false; // unsatisfiable
       }
 
@@ -176,6 +184,8 @@ export function* gen(
       }
     }
   }
+
+  yield cells;
 
   return yield* WaveFunctionGenerateInternal(tiles, width, height, seed, cells);
 }
