@@ -128,7 +128,7 @@ function* WaveFunctionGenerateInternal(
   return null;
 }
 
-function* WaveFunctionGenerate(
+export function* gen(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
   width: number,
   height: number,
@@ -150,7 +150,3 @@ function* WaveFunctionGenerate(
 
   return yield* WaveFunctionGenerateInternal(tiles, width, height, seed, cells);
 }
-
-describe("Basic Functionality", () => {
-  test("should generate a valid arrangement for simple tiles", () => {});
-});
