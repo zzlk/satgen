@@ -4,13 +4,11 @@ const DIRECTIONS: Array<{
   d: number;
   dx: number;
   dy: number;
-  idx: number;
-  idy: number;
 }> = [
-  { name: "north", oppositeName: "south", d: 0, dx: 0, dy: 1, idx: 0, idy: -1 },
-  { name: "east", oppositeName: "west", d: 1, dx: 1, dy: 0, idx: -1, idy: 0 },
-  { name: "south", oppositeName: "north", d: 2, dx: 0, dy: -1, idx: 0, idy: 1 },
-  { name: "west", oppositeName: "east", d: 3, dx: -1, dy: 0, idx: 1, idy: 0 },
+  { name: "north", oppositeName: "south", d: 0, dx: 0, dy: 1 },
+  { name: "east", oppositeName: "west", d: 1, dx: 1, dy: 0 },
+  { name: "south", oppositeName: "north", d: 2, dx: 0, dy: -1 },
+  { name: "west", oppositeName: "east", d: 3, dx: -1, dy: 0 },
 ];
 
 function propagateRemoval(
@@ -76,6 +74,77 @@ function propagateRemoval(
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           queue.push({ x: nx, y: ny });
         }
+      }
+    }
+  }
+
+  return true;
+}
+
+function propagateAddition(
+  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  width: number,
+  height: number,
+  cells: Array<Set<string>>,
+  x: number,
+  y: number
+): boolean {
+  const queue = new Array<{ x: number; y: number }>();
+
+  // Push the four neighbors of {x, y}
+  for (const direction of DIRECTIONS) {
+    const dx = x + direction.dx;
+    const dy = y + direction.dy;
+
+    if (dx < 0 || dx >= width || dy < 0 || dy >= height) {
+      continue;
+    }
+
+    queue.push({ x: dx, y: dy });
+  }
+
+  while (queue.length > 0) {
+    let { x, y } = queue.shift()!;
+
+    const supportedTiles = new Set<string>();
+
+    for (let direction of DIRECTIONS) {
+      const nx = x - direction.dx;
+      const ny = y - direction.dy;
+
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
+
+      const neighbor = cells[ny * width + nx];
+
+      // For each tile in the neighbor, add all tiles that can connect to it
+      for (const tile of neighbor) {
+        for (const e of tiles.get(tile)![direction.d]!) {
+          supportedTiles.add(e);
+        }
+      }
+    }
+
+    const cellPossibilities = cells[y * width + x].size;
+
+    // Add supported tiles to the current cell
+    const originalSize = cells[y * width + x].size;
+    for (const tile of supportedTiles) {
+      cells[y * width + x].add(tile);
+    }
+
+    // If the cell was modified, then push all of its neighbors, since they need to be checked now.
+    if (cells[y * width + x].size !== cellPossibilities) {
+      for (const direction of DIRECTIONS) {
+        const nx = x + direction.dx;
+        const ny = y + direction.dy;
+
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+          continue;
+        }
+
+        queue.push({ x: nx, y: ny });
       }
     }
   }
