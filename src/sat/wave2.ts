@@ -70,6 +70,25 @@ function assertBorderConditionsForAllCells(
   }
 }
 
+function findCells(
+  width: number,
+  height: number,
+  cells: Array<Set<string>>
+): Array<{ x: number; y: number; count: number }> {
+  const result = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (cells[y * width + x].size > 1) {
+        result.push({ x, y, count: cells[y * width + x].size });
+      }
+    }
+  }
+
+  result.sort((a, b) => a.count - b.count);
+
+  return result;
+}
+
 function calculateSupport(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
   cell: Set<string>,
@@ -165,56 +184,56 @@ function* WaveFunctionGenerateInternal(
   }
 
   // Check that the cell array is valid
-  assertBorderConditionsForAllCells(tiles, width, height, cells);
+  // assertBorderConditionsForAllCells(tiles, width, height, cells);
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      switch (cells[y * width + x].size) {
-        case 0:
-          throw "invalid precondition";
+  const sortedCells = findCells(width, height, cells);
 
-        case 1:
-          continue;
+  for (const { x, y } of sortedCells) {
+    switch (cells[y * width + x].size) {
+      case 0:
+        throw "invalid precondition";
 
-        default:
-          // collapse this cell.
-          let possibleTiles = deterministicShuffle(
-            Array.from(cells[y * width + x]),
-            seed,
-            x,
-            y
+      case 1:
+        continue;
+
+      default:
+        // collapse this cell.
+        let possibleTiles = deterministicShuffle(
+          Array.from(cells[y * width + x]),
+          seed,
+          x,
+          y
+        );
+
+        for (const tile of possibleTiles) {
+          // deep clone cells:
+          const backup = cells.map((c) => new Set(c));
+
+          cells[y * width + x].clear();
+          cells[y * width + x].add(tile);
+
+          // propagate the effects of the removal
+          if (!propagateRemoval(tiles, width, height, cells, x, y)) {
+            // placing this tile was unsatisfiable, restore the previous state
+            cells = backup;
+            continue;
+          }
+
+          yield cells;
+
+          // recurse
+          const ret = yield* WaveFunctionGenerateInternal(
+            tiles,
+            width,
+            height,
+            seed + 1,
+            cells
           );
 
-          for (const tile of possibleTiles) {
-            // deep clone cells:
-            const backup = cells.map((c) => new Set(c));
-
-            cells[y * width + x].clear();
-            cells[y * width + x].add(tile);
-
-            // propagate the effects of the removal
-            if (!propagateRemoval(tiles, width, height, cells, x, y)) {
-              // placing this tile was unsatisfiable, restore the previous state
-              cells = backup;
-              continue;
-            }
-
-            yield cells;
-
-            // recurse
-            const ret = yield* WaveFunctionGenerateInternal(
-              tiles,
-              width,
-              height,
-              seed + 1,
-              cells
-            );
-
-            if (ret !== null) {
-              return ret;
-            }
+          if (ret !== null) {
+            return ret;
           }
-      }
+        }
     }
   }
 
