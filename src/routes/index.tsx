@@ -5,11 +5,7 @@ import TileDisplay from "../components/TileDisplay";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
-import type {
-  SynthesisProgress,
-  SynthesisAttemptStart,
-  SynthesisResult,
-} from "../utils/WaveFunctionCollapseSynthesizer";
+import { gen } from "../sat/wave2";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -26,19 +22,10 @@ export default function () {
   const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
   const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [synthesisProgress, setSynthesisProgress] =
-    useState<SynthesisProgress | null>(null);
-  const [currentAttempt, setCurrentAttempt] = useState<{
-    number: number;
-    max: number;
-  } | null>(null);
-  const [partialResult, setPartialResult] = useState<SynthesisResult | null>(
-    null
-  );
+  const [sleepTime, setSleepTime] = useState<number>(500);
   const [partialResultImage, setPartialResultImage] = useState<string | null>(
     null
   );
-  const [sleepTime, setSleepTime] = useState<number>(500);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -77,37 +64,50 @@ export default function () {
     }
   };
 
-  const handleProgressUpdate = useCallback((progress: SynthesisProgress) => {
-    setSynthesisProgress(progress);
-    console.log(
-      `Progress: ${progress.totalCollapsed}/${progress.totalCells} cells collapsed (Attempt ${progress.attemptNumber})`
-    );
+  // Convert tiles to the format expected by the wave2.ts gen function
+  const convertTilesToWave2Format = useCallback((tiles: Tile[]) => {
+    const tileMap = new Map<
+      string,
+      [Set<string>, Set<string>, Set<string>, Set<string>]
+    >();
+
+    // Initialize all tiles with empty connection sets
+    for (const tile of tiles) {
+      tileMap.set(tile.id, [
+        new Set<string>(), // north connections
+        new Set<string>(), // east connections
+        new Set<string>(), // south connections
+        new Set<string>(), // west connections
+      ]);
+    }
+
+    // Populate connections based on tile borders
+    for (const tile of tiles) {
+      const connections = tileMap.get(tile.id)!;
+
+      // North connections (tile's north border can connect to other tiles' south border)
+      for (const northTileId of tile.borders.north) {
+        connections[0].add(northTileId);
+      }
+
+      // East connections (tile's east border can connect to other tiles' west border)
+      for (const eastTileId of tile.borders.east) {
+        connections[1].add(eastTileId);
+      }
+
+      // South connections (tile's south border can connect to other tiles' north border)
+      for (const southTileId of tile.borders.south) {
+        connections[2].add(southTileId);
+      }
+
+      // West connections (tile's west border can connect to other tiles' east border)
+      for (const westTileId of tile.borders.west) {
+        connections[3].add(westTileId);
+      }
+    }
+
+    return tileMap;
   }, []);
-
-  const handleAttemptStart = useCallback(
-    (attemptStart: SynthesisAttemptStart) => {
-      setCurrentAttempt({
-        number: attemptStart.attemptNumber,
-        max: attemptStart.maxAttempts,
-      });
-      console.log(
-        `Starting attempt ${attemptStart.attemptNumber}/${attemptStart.maxAttempts}`
-      );
-    },
-    []
-  );
-
-  const handlePartialResult = useCallback(
-    (partialResult: SynthesisResult) => {
-      setPartialResult(partialResult);
-      console.log(
-        `Partial result from attempt ${partialResult.attemptNumber}: ${partialResult.compatibilityScore} compatibility`
-      );
-      // Render partial result as image
-      renderPartialResultImage(partialResult);
-    },
-    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight]
-  );
 
   const handleSynthesize = async () => {
     if (enhancedTiles.length === 0) {
@@ -117,34 +117,20 @@ export default function () {
 
     setIsSynthesizing(true);
     setSynthesizedImage(null);
-    setSynthesisProgress(null);
-    setCurrentAttempt(null);
-    setPartialResult(null);
     setPartialResultImage(null);
 
     try {
-      const targetWidth = synthesizeWidth * tileWidth;
-      const targetHeight = synthesizeHeight * tileHeight;
+      const targetWidth = synthesizeWidth;
+      const targetHeight = synthesizeHeight;
 
-      // Create a TileCollection from enhanced tiles for synthesis
-      const synthesisCollection = TileCollection.fromTiles(
-        enhancedTiles,
-        enhancedTiles.length,
-        targetWidth,
-        targetHeight,
-        Math.max(...enhancedTiles.map((t) => t.x)) + 1,
-        Math.max(...enhancedTiles.map((t) => t.y)) + 1
-      );
+      // Convert tiles to wave2 format
+      const tileMap = convertTilesToWave2Format(enhancedTiles);
 
-      // Use the generator function for real-time progress updates
-      const generator = synthesisCollection.synthesizeWithProgress(
-        targetWidth,
-        targetHeight,
-        synthesisSeed
-      );
+      // Use the gen function from wave2.ts
+      const generator = gen(tileMap, targetWidth, targetHeight, synthesisSeed);
 
-      let result: string[][] | null = null;
-      let partialResult: any = null;
+      let result: string[] | null = null;
+      let iteration = 0;
 
       // Process the generator
       while (true) {
@@ -155,40 +141,37 @@ export default function () {
           break;
         }
 
-        partialResult = next.value;
+        // Render partial result from the current state
+        const currentState = next.value;
+        await renderPartialResultFromState(
+          currentState,
+          targetWidth,
+          targetHeight,
+          iteration
+        );
 
-        // Update progress
-        setSynthesisProgress({
-          totalCollapsed: partialResult.collapsedCells,
-          totalCells: partialResult.totalCells,
-          iteration: partialResult.iteration,
-          attemptNumber: 1, // Single attempt with generator
-          collapsedCell: partialResult.lastCollapsedCell
-            ? {
-                x: partialResult.lastCollapsedCell.x,
-                y: partialResult.lastCollapsedCell.y,
-                tileId: partialResult.lastCollapsedCell.tile,
-                possibilities: 1, // We know it's collapsed, so only 1 possibility
-              }
-            : undefined,
-        });
-
-        // Render partial result
-        if (partialResult.arrangement && partialResult.arrangement.length > 0) {
-          await renderPartialResultFromArrangement(
-            partialResult.arrangement,
-            partialResult.lastCollapsedCells
-          );
-        }
+        iteration++;
 
         // Small delay to allow UI updates
         await new Promise((resolve) => setTimeout(resolve, sleepTime));
       }
 
       if (result) {
+        // Convert the 1D result array to 2D arrangement
+        const arrangement: string[][] = [];
+        for (let y = 0; y < targetHeight; y++) {
+          arrangement[y] = [];
+          for (let x = 0; x < targetWidth; x++) {
+            const index = y * targetWidth + x;
+            arrangement[y][x] = result[index];
+          }
+        }
+
         // Render final result
-        const finalImage = await renderArrangementToImage(result);
+        const finalImage = await renderArrangementToImage(arrangement);
         setSynthesizedImage(finalImage);
+      } else {
+        alert("Failed to generate image. No valid arrangement found.");
       }
     } catch (error) {
       console.error("Error synthesizing image:", error);
@@ -199,79 +182,18 @@ export default function () {
       );
     } finally {
       setIsSynthesizing(false);
-      setSynthesisProgress(null);
-      setCurrentAttempt(null);
+      setPartialResultImage(null);
     }
   };
 
-  const renderPartialResultImage = useCallback(
-    async (result: SynthesisResult) => {
-      if (!result.arrangement || result.arrangement.length === 0) return;
-
-      const targetWidth = synthesizeWidth * tileWidth;
-      const targetHeight = synthesizeHeight * tileHeight;
-
-      // Create canvas for the partial result
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) return;
-
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      ctx.clearRect(0, 0, targetWidth, targetHeight);
-
-      // Render the partial arrangement
-      for (let gridY = 0; gridY < result.arrangement.length; gridY++) {
-        for (let gridX = 0; gridX < result.arrangement[gridY].length; gridX++) {
-          const tile = result.arrangement[gridY][gridX];
-          if (tile) {
-            const targetX = gridX * tileWidth;
-            const targetY = gridY * tileHeight;
-
-            const tileCanvas = document.createElement("canvas");
-            const tileCtx = tileCanvas.getContext("2d");
-
-            if (tileCtx) {
-              const tileImg = new Image();
-
-              await new Promise<void>((resolve, reject) => {
-                tileImg.onload = () => {
-                  tileCanvas.width = tileWidth;
-                  tileCanvas.height = tileHeight;
-                  tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
-                  ctx.drawImage(tileCanvas, targetX, targetY);
-                  resolve();
-                };
-
-                tileImg.onerror = () => {
-                  reject(new Error(`Failed to load tile image: ${tile.id}`));
-                };
-
-                tileImg.src = tile.dataUrl;
-              });
-            }
-          }
-        }
-      }
-
-      const dataUrl = canvas.toDataURL("image/png");
-      setPartialResultImage(dataUrl);
-    },
-    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight]
-  );
-
-  const renderPartialResultFromArrangement = useCallback(
+  const renderPartialResultFromState = useCallback(
     async (
-      arrangement: string[][],
-      lastCollapsedCells?: Array<{
-        x: number;
-        y: number;
-        tile: string;
-        iteration: number;
-      }>
+      state: Array<Set<string>>,
+      width: number,
+      height: number,
+      iteration: number
     ) => {
-      if (!arrangement || arrangement.length === 0) return;
+      if (!state || state.length === 0) return;
 
       const targetWidth = synthesizeWidth * tileWidth;
       const targetHeight = synthesizeHeight * tileHeight;
@@ -286,46 +208,16 @@ export default function () {
       canvas.height = targetHeight;
       ctx.clearRect(0, 0, targetWidth, targetHeight);
 
-      // Render the partial arrangement
-      for (let gridY = 0; gridY < arrangement.length; gridY++) {
-        for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
-          const tileId = arrangement[gridY][gridX];
-          const targetX = gridX * tileWidth;
-          const targetY = gridY * tileHeight;
+      // Render the current state
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const cellIndex = y * width + x;
+          const cellPossibilities = state[cellIndex];
+          const targetX = x * tileWidth;
+          const targetY = y * tileHeight;
 
-          if (tileId === "UNCERTAIN") {
-            // Render purple tile for uncertain cells
-            const tileCanvas = document.createElement("canvas");
-            const tileCtx = tileCanvas.getContext("2d");
-
-            if (tileCtx) {
-              tileCanvas.width = tileWidth;
-              tileCanvas.height = tileHeight;
-
-              // Create purple gradient
-              const gradient = tileCtx.createLinearGradient(
-                0,
-                0,
-                tileWidth,
-                tileHeight
-              );
-              gradient.addColorStop(0, "#8B5CF6"); // Purple
-              gradient.addColorStop(1, "#7C3AED"); // Darker purple
-
-              tileCtx.fillStyle = gradient;
-              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-              // Add a question mark or pattern to indicate uncertainty
-              tileCtx.fillStyle = "#FFFFFF";
-              tileCtx.font = `${Math.min(tileWidth, tileHeight) / 3}px Arial`;
-              tileCtx.textAlign = "center";
-              tileCtx.textBaseline = "middle";
-              tileCtx.fillText("?", tileWidth / 2, tileHeight / 2);
-
-              ctx.drawImage(tileCanvas, targetX, targetY);
-            }
-          } else if (tileId === "EMPTY") {
-            // Render empty tile with red X on black background
+          if (cellPossibilities.size === 0) {
+            // Empty cell - render red X on black background
             const emptyCanvas = document.createElement("canvas");
             const emptyCtx = emptyCanvas.getContext("2d");
 
@@ -352,7 +244,9 @@ export default function () {
 
               ctx.drawImage(emptyCanvas, targetX, targetY);
             }
-          } else if (tileId) {
+          } else if (cellPossibilities.size === 1) {
+            // Collapsed cell - render the single tile
+            const tileId = Array.from(cellPossibilities)[0];
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
               const tileCanvas = document.createElement("canvas");
@@ -378,55 +272,75 @@ export default function () {
                 });
               }
             }
+          } else {
+            // Uncertain cell - render based on number of possibilities
+            const tileCanvas = document.createElement("canvas");
+            const tileCtx = tileCanvas.getContext("2d");
+
+            if (tileCtx) {
+              tileCanvas.width = tileWidth;
+              tileCanvas.height = tileHeight;
+
+              // Create gradient based on number of possibilities
+              const maxPossibilities = enhancedTiles.length;
+              const possibilityRatio =
+                cellPossibilities.size / maxPossibilities;
+
+              // Color from purple (many possibilities) to blue (few possibilities)
+              const hue = 240 + possibilityRatio * 60; // 240 (blue) to 300 (purple)
+              const saturation = 70;
+              const lightness = 60 - possibilityRatio * 20; // 60 to 40
+
+              const gradient = tileCtx.createLinearGradient(
+                0,
+                0,
+                tileWidth,
+                tileHeight
+              );
+              gradient.addColorStop(
+                0,
+                `hsl(${hue}, ${saturation}%, ${lightness}%)`
+              );
+              gradient.addColorStop(
+                1,
+                `hsl(${hue}, ${saturation}%, ${lightness - 10}%)`
+              );
+
+              tileCtx.fillStyle = gradient;
+              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
+
+              // Add possibility count
+              tileCtx.fillStyle = "#FFFFFF";
+              tileCtx.font = `bold ${
+                Math.min(tileWidth, tileHeight) / 4
+              }px Arial`;
+              tileCtx.textAlign = "center";
+              tileCtx.textBaseline = "middle";
+              tileCtx.fillText(
+                cellPossibilities.size.toString(),
+                tileWidth / 2,
+                tileHeight / 2
+              );
+
+              // Add border
+              tileCtx.strokeStyle = `hsl(${hue}, ${saturation}%, ${
+                lightness - 20
+              }%)`;
+              tileCtx.lineWidth = 2;
+              tileCtx.strokeRect(0, 0, tileWidth, tileHeight);
+
+              ctx.drawImage(tileCanvas, targetX, targetY);
+            }
           }
         }
       }
 
-      // Add colored overlays for last collapsed cells
-      // This creates a visual progression showing the algorithm's recent decisions
-      // Each cell gets a different color based on when it was collapsed
-      // Newer cells have higher opacity and are more visible
-      if (lastCollapsedCells && lastCollapsedCells.length > 0) {
-        for (let i = 0; i < Math.min(lastCollapsedCells.length, 5); i++) {
-          const cell = lastCollapsedCells[lastCollapsedCells.length - i - 1];
-          const targetX = cell.x * tileWidth;
-          const targetY = cell.y * tileHeight;
-
-          // // Calculate color based on position in the array (newer = more saturated)
-          // const alpha = 0.2 + (i / lastCollapsedCells.length) * 0.3; // 0.2 to 0.5 opacity
-          // const hue = (i * 45) % 360; // Different hue for each cell (0-315 degrees)
-
-          // Create overlay canvas
-          const overlayCanvas = document.createElement("canvas");
-          const overlayCtx = overlayCanvas.getContext("2d");
-
-          if (overlayCtx) {
-            overlayCanvas.width = tileWidth;
-            overlayCanvas.height = tileHeight;
-
-            // // Create colored overlay
-            // overlayCtx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
-            // overlayCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-            // // Add border
-            // overlayCtx.strokeStyle = `hsla(${hue}, 80%, 40%, 0.8)`;
-            // overlayCtx.lineWidth = 2;
-            // overlayCtx.strokeRect(0, 0, tileWidth, tileHeight);
-
-            // Add iteration number
-            overlayCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
-            overlayCtx.font = `bold ${
-              Math.min(tileWidth, tileHeight) / 3
-            }px Arial`;
-            overlayCtx.textAlign = "center";
-            overlayCtx.textBaseline = "middle";
-            overlayCtx.fillText(i.toString(), tileWidth / 2, tileHeight / 2);
-
-            // Draw the overlay
-            ctx.drawImage(overlayCanvas, targetX, targetY);
-          }
-        }
-      }
+      // Add iteration number overlay
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(10, 10, 120, 30);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "16px Arial";
+      ctx.fillText(`Iteration: ${iteration}`, 20, 30);
 
       const dataUrl = canvas.toDataURL("image/png");
       setPartialResultImage(dataUrl);
@@ -462,66 +376,7 @@ export default function () {
           const targetX = gridX * tileWidth;
           const targetY = gridY * tileHeight;
 
-          if (tileId === "UNCERTAIN") {
-            // Render purple tile for uncertain cells
-            const tileCanvas = document.createElement("canvas");
-            const tileCtx = tileCanvas.getContext("2d");
-
-            if (tileCtx) {
-              tileCanvas.width = tileWidth;
-              tileCanvas.height = tileHeight;
-
-              // Create purple gradient
-              const gradient = tileCtx.createLinearGradient(
-                0,
-                0,
-                tileWidth,
-                tileHeight
-              );
-              gradient.addColorStop(0, "#8B5CF6"); // Purple
-              gradient.addColorStop(1, "#7C3AED"); // Darker purple
-
-              tileCtx.fillStyle = gradient;
-              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-              // Add a question mark or pattern to indicate uncertainty
-              tileCtx.fillStyle = "#FFFFFF";
-              tileCtx.font = `${Math.min(tileWidth, tileHeight) / 3}px Arial`;
-              tileCtx.textAlign = "center";
-              tileCtx.textBaseline = "middle";
-              tileCtx.fillText("?", tileWidth / 2, tileHeight / 2);
-
-              ctx.drawImage(tileCanvas, targetX, targetY);
-            }
-          } else if (tileId === "EMPTY") {
-            // Render empty tile with red X on black background
-            const emptyCanvas = document.createElement("canvas");
-            const emptyCtx = emptyCanvas.getContext("2d");
-
-            if (emptyCtx) {
-              emptyCanvas.width = tileWidth;
-              emptyCanvas.height = tileHeight;
-
-              // Fill with black background
-              emptyCtx.fillStyle = "#000000";
-              emptyCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-              // Draw red X
-              emptyCtx.strokeStyle = "#FF0000";
-              emptyCtx.lineWidth = Math.max(
-                2,
-                Math.min(tileWidth, tileHeight) / 16
-              );
-              emptyCtx.beginPath();
-              emptyCtx.moveTo(tileWidth * 0.2, tileHeight * 0.2);
-              emptyCtx.lineTo(tileWidth * 0.8, tileHeight * 0.8);
-              emptyCtx.moveTo(tileWidth * 0.8, tileHeight * 0.2);
-              emptyCtx.lineTo(tileWidth * 0.2, tileHeight * 0.8);
-              emptyCtx.stroke();
-
-              ctx.drawImage(emptyCanvas, targetX, targetY);
-            }
-          } else if (tileId) {
+          if (tileId) {
             const tile = enhancedTiles.find((t) => t.id === tileId);
             if (tile) {
               const tileCanvas = document.createElement("canvas");
@@ -747,44 +602,22 @@ export default function () {
           <div
             className="synthesis-progress"
             style={{
-              minHeight: isSynthesizing ? "300px" : "auto",
+              minHeight: isSynthesizing ? "400px" : "auto",
               transition: "min-height 0.3s ease-in-out",
             }}
           >
             {isSynthesizing && (
               <>
                 <h4 className="progress-title">Synthesis Progress</h4>
-
-                {currentAttempt && (
-                  <div className="attempt-info">
-                    <p>
-                      Attempt {currentAttempt.number} of {currentAttempt.max}
-                    </p>
-                  </div>
-                )}
-
-                {synthesisProgress && (
-                  <div className="progress-info">
-                    <p>
-                      Cells collapsed: {synthesisProgress.totalCollapsed}/
-                      {synthesisProgress.totalCells}
-                    </p>
-                    <p>Iteration: {synthesisProgress.iteration}</p>
-
-                    {synthesisProgress.collapsedCell && (
-                      <p>
-                        Last collapsed: ({synthesisProgress.collapsedCell.x},{" "}
-                        {synthesisProgress.collapsedCell.y}) with{" "}
-                        {synthesisProgress.collapsedCell.possibilities}{" "}
-                        possibilities
-                      </p>
-                    )}
-                  </div>
-                )}
+                <div className="progress-info">
+                  <p>
+                    Generating image using Wave Function Collapse algorithm...
+                  </p>
+                </div>
 
                 {partialResultImage && (
                   <div className="partial-result">
-                    <h5>Partial Result</h5>
+                    <h5>Current State</h5>
                     <div className="partial-image-container">
                       <img
                         src={partialResultImage}
@@ -797,6 +630,22 @@ export default function () {
                         }}
                       />
                     </div>
+                    <p className="partial-info">
+                      <strong>Legend:</strong>
+                      <br />•{" "}
+                      <span style={{ color: "#8B5CF6" }}>
+                        Purple/Blue tiles
+                      </span>
+                      : Uncertain cells with multiple possibilities
+                      <br />•{" "}
+                      <span style={{ color: "#000000" }}>
+                        Black tiles with red X
+                      </span>
+                      : Contradictions (no valid tiles)
+                      <br />•{" "}
+                      <span style={{ color: "#000000" }}>Normal tiles</span>:
+                      Collapsed cells with single tile
+                    </p>
                   </div>
                 )}
               </>
