@@ -1,5 +1,9 @@
 import { deterministicShuffle } from "./deterministicShuffle";
 
+function areSetsEqual<T>(a: Set<T>, b: Set<T>) {
+  return a.size === b.size && [...a].every((value) => b.has(value));
+}
+
 const DIRECTIONS: Array<{
   name: string;
   oppositeName: string;
@@ -12,6 +16,75 @@ const DIRECTIONS: Array<{
   { name: "south", oppositeName: "north", d: 2, dx: 0, dy: -1 },
   { name: "west", oppositeName: "east", d: 3, dx: -1, dy: 0 },
 ];
+
+function assertBorderConditionsForAllCells(
+  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  width: number,
+  height: number,
+  cells: Array<Set<string>>
+) {
+  function assertBorderConditionsForCell(
+    tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+    width: number,
+    height: number,
+    cells: Array<Set<string>>,
+    x: number,
+    y: number
+  ) {
+    for (const direction of DIRECTIONS) {
+      const nx = x + direction.dx;
+      const ny = y + direction.dy;
+
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
+
+      // Check that the neighbors support the current cell
+      const support = calculateSupport(
+        tiles,
+        cells[ny * width + nx],
+        (direction.d + 2) % 4
+      );
+
+      if (!cells[y * width + x].isSubsetOf(support)) {
+        throw "MISSING SUPPORT";
+      }
+
+      // Check that the current cell (x, y) supports all neighbors
+      const neighborSupport = calculateSupport(
+        tiles,
+        cells[y * width + x],
+        direction.d
+      );
+
+      if (!cells[ny * width + nx].isSubsetOf(neighborSupport)) {
+        throw "MISSING SUPPORT";
+      }
+    }
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      assertBorderConditionsForCell(tiles, width, height, cells, x, y);
+    }
+  }
+}
+
+function calculateSupport(
+  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  cell: Set<string>,
+  direction: number
+): Set<string> {
+  const support = new Set<string>();
+
+  for (const tileId of cell) {
+    for (const supportedTile of tiles.get(tileId)![direction]) {
+      support.add(supportedTile);
+    }
+  }
+
+  return support;
+}
 
 function propagateRemoval(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
@@ -38,44 +111,40 @@ function propagateRemoval(
   while (queue.length > 0) {
     let { x, y } = queue.shift()!;
 
-    const cellPossibilities = cells[y * width + x].size;
-
-    if (cellPossibilities === 0) {
-      throw "invalid";
-    }
+    const cellBackup = new Set(cells[y * width + x]);
 
     for (let direction of DIRECTIONS) {
-      const nx = x - direction.dx;
-      const ny = y - direction.dy;
+      const nx = x + direction.dx;
+      const ny = y + direction.dy;
 
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
         continue;
       }
 
-      const neighbor = cells[ny * width + nx];
-      const support = new Set<string>();
-      for (const tile of neighbor) {
-        for (const e of tiles.get(tile)![direction.d]!) {
-          support.add(e);
-        }
-      }
+      const support = calculateSupport(
+        tiles,
+        cells[ny * width + nx],
+        (direction.d + 2) % 4
+      );
 
       // remove unsupported tiles.
       cells[y * width + x] = cells[y * width + x].intersection(support);
     }
 
-    // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
-    if (cells[y * width + x].size !== cellPossibilities) {
-      if (cells[y * width + x].size === 0) {
-        return false; // unsatisfiable
-      }
+    if (cells[y * width + x].size === 0) {
+      return false; // unsatisfiable
+    }
 
+    // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
+    if (!areSetsEqual(cells[y * width + x], cellBackup)) {
       for (const direction of DIRECTIONS) {
         const nx = x + direction.dx;
         const ny = y + direction.dy;
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          queue.push({ x: nx, y: ny });
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+          continue;
         }
+
+        queue.push({ x: nx, y: ny });
       }
     }
   }
@@ -95,10 +164,11 @@ function* WaveFunctionGenerateInternal(
     return cells.map((c) => c.keys().next().value!);
   }
 
+  // Check that the cell array is valid
+  assertBorderConditionsForAllCells(tiles, width, height, cells);
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let cell = cells[y * width + x];
-
       switch (cells[y * width + x].size) {
         case 0:
           throw "invalid precondition";
@@ -108,10 +178,12 @@ function* WaveFunctionGenerateInternal(
 
         default:
           // collapse this cell.
-          let possibleTiles = Array.from(cells[y * width + x]);
-
-          // Shuffle possibleTiles deterministically by using seed and position
-          possibleTiles = deterministicShuffle(possibleTiles, seed, x, y);
+          let possibleTiles = deterministicShuffle(
+            Array.from(cells[y * width + x]),
+            seed,
+            x,
+            y
+          );
 
           for (const tile of possibleTiles) {
             // deep clone cells:
