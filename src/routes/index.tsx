@@ -90,7 +90,7 @@ export default function () {
 
       // North connections (tile's north border can connect to other tiles' south border)
       for (const northTileId of tile.borders.north) {
-        connections[0].add(northTileId);
+        connections[2].add(northTileId);
       }
 
       // East connections (tile's east border can connect to other tiles' west border)
@@ -100,7 +100,7 @@ export default function () {
 
       // South connections (tile's south border can connect to other tiles' north border)
       for (const southTileId of tile.borders.south) {
-        connections[2].add(southTileId);
+        connections[0].add(southTileId);
       }
 
       // West connections (tile's west border can connect to other tiles' east border)
