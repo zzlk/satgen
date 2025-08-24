@@ -1,3 +1,5 @@
+import { deterministicShuffle } from "./deterministicShuffle";
+
 const DIRECTIONS: Array<{
   name: string;
   oppositeName: string;
@@ -10,34 +12,6 @@ const DIRECTIONS: Array<{
   { name: "south", oppositeName: "north", d: 2, dx: 0, dy: -1 },
   { name: "west", oppositeName: "east", d: 3, dx: -1, dy: 0 },
 ];
-
-// Deterministic shuffle function using Fisher-Yates algorithm
-function deterministicShuffle<T>(
-  array: T[],
-  seed: number,
-  x: number,
-  y: number
-): T[] {
-  const shuffled = [...array];
-
-  // Create a deterministic random number generator based on seed and position
-  let hash = seed;
-  hash = (hash << 5) - hash + x;
-  hash = (hash << 5) - hash + y;
-  hash = hash & hash; // Convert to 32-bit integer
-
-  // Fisher-Yates shuffle with deterministic random numbers
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    // Generate deterministic random number
-    hash = (hash * 9301 + 49297) % 233280;
-    const j = hash % (i + 1);
-
-    // Swap elements
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-
-  return shuffled;
-}
 
 function propagateRemoval(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
@@ -125,7 +99,7 @@ function* WaveFunctionGenerateInternal(
     for (let x = 0; x < width; x++) {
       let cell = cells[y * width + x];
 
-      switch (cell.size) {
+      switch (cells[y * width + x].size) {
         case 0:
           throw "invalid precondition";
 
@@ -134,7 +108,7 @@ function* WaveFunctionGenerateInternal(
 
         default:
           // collapse this cell.
-          let possibleTiles = Array.from(cell);
+          let possibleTiles = Array.from(cells[y * width + x]);
 
           // Shuffle possibleTiles deterministically by using seed and position
           possibleTiles = deterministicShuffle(possibleTiles, seed, x, y);
@@ -143,8 +117,8 @@ function* WaveFunctionGenerateInternal(
             // deep clone cells:
             const backup = cells.map((c) => new Set(c));
 
-            cell.clear();
-            cell.add(tile);
+            cells[y * width + x].clear();
+            cells[y * width + x].add(tile);
 
             // propagate the effects of the removal
             if (!propagateRemoval(tiles, width, height, cells, x, y)) {
@@ -160,7 +134,7 @@ function* WaveFunctionGenerateInternal(
               tiles,
               width,
               height,
-              seed,
+              seed + 1,
               cells
             );
 
