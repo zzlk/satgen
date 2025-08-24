@@ -26,6 +26,9 @@ export default function () {
   const [partialResultImage, setPartialResultImage] = useState<string | null>(
     null
   );
+  const [finalArrangement, setFinalArrangement] = useState<string[][] | null>(
+    null
+  );
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -170,6 +173,7 @@ export default function () {
         // Render final result
         const finalImage = await renderArrangementToImage(arrangement);
         setSynthesizedImage(finalImage);
+        setFinalArrangement(arrangement);
       } else {
         alert("Failed to generate image. No valid arrangement found.");
       }
@@ -346,6 +350,63 @@ export default function () {
       setPartialResultImage(dataUrl);
     },
     [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight, enhancedTiles]
+  );
+
+  const handleSynthesizedImageClick = useCallback(
+    (event: React.MouseEvent<HTMLImageElement>) => {
+      if (!finalArrangement || !synthesizedImage) return;
+
+      const imgElement = event.currentTarget;
+      const rect = imgElement.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      // Get the actual displayed image dimensions
+      const displayedWidth = imgElement.offsetWidth;
+      const displayedHeight = imgElement.offsetHeight;
+
+      // Check if click is within the displayed image bounds
+      if (x < 0 || x >= displayedWidth || y < 0 || y >= displayedHeight) {
+        return; // Click is outside the image
+      }
+
+      // Calculate scale factors
+      const scaleX = displayedWidth / (synthesizeWidth * tileWidth);
+      const scaleY = displayedHeight / (synthesizeHeight * tileHeight);
+
+      // Convert click coordinates to original image coordinates
+      const originalX = x / scaleX;
+      const originalY = y / scaleY;
+
+      // Calculate which tile was clicked
+      const tileX = Math.floor(originalX / tileWidth);
+      const tileY = Math.floor(originalY / tileHeight);
+
+      // Double-check bounds in tile coordinates
+      if (
+        tileX >= 0 &&
+        tileX < synthesizeWidth &&
+        tileY >= 0 &&
+        tileY < synthesizeHeight
+      ) {
+        const tileId = finalArrangement[tileY][tileX];
+        if (tileId) {
+          console.log(
+            `Clicked tile ID: ${tileId} at position (${tileX}, ${tileY})`
+          );
+        } else {
+          console.log(`Clicked empty position at (${tileX}, ${tileY})`);
+        }
+      }
+    },
+    [
+      finalArrangement,
+      synthesizedImage,
+      tileWidth,
+      tileHeight,
+      synthesizeWidth,
+      synthesizeHeight,
+    ]
   );
 
   const renderArrangementToImage = useCallback(
@@ -664,6 +725,8 @@ export default function () {
                   src={synthesizedImage}
                   alt="Synthesized Image"
                   className="synthesized-image"
+                  onClick={handleSynthesizedImageClick}
+                  style={{ cursor: "pointer" }}
                 />
               </div>
               <button
