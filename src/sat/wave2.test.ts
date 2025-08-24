@@ -559,6 +559,61 @@ describe("seed consistency tests", () => {
       true
     );
   });
+
+  test("should produce consistent results with deterministic shuffle", () => {
+    // Test with a configuration that has multiple possible tiles to verify shuffle consistency
+    const tiles = new Map();
+    tiles.set("A", [
+      new Set(["B", "C"]), // north
+      new Set(["B", "C"]), // east
+      new Set(["B", "C"]), // south
+      new Set(["B", "C"]), // west
+    ]);
+    tiles.set("B", [
+      new Set(["A", "C"]), // north
+      new Set(["A", "C"]), // east
+      new Set(["A", "C"]), // south
+      new Set(["A", "C"]), // west
+    ]);
+    tiles.set("C", [
+      new Set(["A", "B"]), // north
+      new Set(["A", "B"]), // east
+      new Set(["A", "B"]), // south
+      new Set(["A", "B"]), // west
+    ]);
+
+    // Run multiple times with the same seed
+    const results: string[][][] = [];
+
+    for (let i = 0; i < 3; i++) {
+      const generator = gen(tiles, 2, 2, 42);
+
+      // Skip to final result
+      let result;
+      do {
+        result = generator.next();
+      } while (!result.done);
+
+      // Convert 1D result to 2D for easier comparison
+      if (result.value) {
+        const arrangement: string[][] = [];
+        for (let y = 0; y < 2; y++) {
+          arrangement[y] = [];
+          for (let x = 0; x < 2; x++) {
+            const index = y * 2 + x;
+            arrangement[y][x] = result.value[index];
+          }
+        }
+
+        results.push(arrangement);
+      }
+    }
+
+    // All results should be identical due to deterministic shuffle
+    expect(results[0]).toStrictEqual(results[1]);
+    expect(results[1]).toStrictEqual(results[2]);
+    expect(results[0]).toStrictEqual(results[2]);
+  });
 });
 
 describe("advanced edge cases for maximum coverage", () => {
