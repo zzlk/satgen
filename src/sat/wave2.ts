@@ -1,10 +1,6 @@
 import { deterministicShuffle } from "./deterministicShuffle";
 import Bitset from "./bitset";
-import {
-  calculateSupport,
-  clearSupportCache,
-  getCacheStats,
-} from "./support-cache";
+import { SupportCache } from "./support-cache";
 
 const DIRECTIONS: Array<{
   name: string;
@@ -24,7 +20,8 @@ function assertBorderConditionsForAllCells(
   bitsetSize: number,
   width: number,
   height: number,
-  cells: Array<Bitset>
+  cells: Array<Bitset>,
+  cache: SupportCache
 ) {
   function assertBorderConditionsForCell(
     tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
@@ -33,7 +30,8 @@ function assertBorderConditionsForAllCells(
     height: number,
     cells: Array<Bitset>,
     x: number,
-    y: number
+    y: number,
+    cache: SupportCache
   ) {
     for (const direction of DIRECTIONS) {
       const nx = x + direction.dx;
@@ -44,7 +42,7 @@ function assertBorderConditionsForAllCells(
       }
 
       // Check that the neighbors support the current cell
-      const support = calculateSupport(
+      const support = cache.calculateSupport(
         tiles,
         bitsetSize,
         cells[ny * width + nx],
@@ -56,7 +54,7 @@ function assertBorderConditionsForAllCells(
       }
 
       // Check that the current cell (x, y) supports all neighbors
-      const neighborSupport = calculateSupport(
+      const neighborSupport = cache.calculateSupport(
         tiles,
         bitsetSize,
         cells[y * width + x],
@@ -78,7 +76,8 @@ function assertBorderConditionsForAllCells(
         height,
         cells,
         x,
-        y
+        y,
+        cache
       );
     }
   }
@@ -110,7 +109,8 @@ function propagateRemoval(
   height: number,
   cells: Array<Bitset>,
   x: number,
-  y: number
+  y: number,
+  cache: SupportCache
 ): boolean {
   const queue = new Array<{ x: number; y: number }>();
 
@@ -139,7 +139,7 @@ function propagateRemoval(
         continue;
       }
 
-      const support = calculateSupport(
+      const support = cache.calculateSupport(
         tiles,
         bitsetSize,
         cells[ny * width + nx],
@@ -179,7 +179,8 @@ function* WaveFunctionGenerateInternal(
   width: number,
   height: number,
   seed: number,
-  cells: Array<Bitset>
+  cells: Array<Bitset>,
+  cache: SupportCache
 ): Generator<Array<Set<string>>, Array<string> | null> {
   // base case, entire cell array is collapsed.
   if (cells.every((c) => c.count() === 1)) {
@@ -213,7 +214,16 @@ function* WaveFunctionGenerateInternal(
 
           // propagate the effects of the removal
           if (
-            !propagateRemoval(tiles, bitsetSize, width, height, cells, x, y)
+            !propagateRemoval(
+              tiles,
+              bitsetSize,
+              width,
+              height,
+              cells,
+              x,
+              y,
+              cache
+            )
           ) {
             // placing this tile was unsatisfiable, restore the previous state
             cells = backup;
@@ -234,7 +244,8 @@ function* WaveFunctionGenerateInternal(
             width,
             height,
             seed + 1,
-            cells
+            cells,
+            cache
           );
 
           if (ret !== null) {
@@ -256,8 +267,8 @@ export function* gen(
   height: number,
   seed: number
 ): Generator<Array<Set<string>>, Array<string> | null> {
-  // Clear support cache at the start of each generation
-  clearSupportCache();
+  // Create support cache instance
+  const cache = new SupportCache();
   // Validate that tile connections are commutative
   for (const [tileA, connectionsA] of tiles) {
     for (const direction of DIRECTIONS) {
@@ -333,7 +344,18 @@ export function* gen(
   // make sure that the initial state is valid, propagate removal for all cells
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (!propagateRemoval(newTiles, bitsetSize, width, height, cells, x, y)) {
+      if (
+        !propagateRemoval(
+          newTiles,
+          bitsetSize,
+          width,
+          height,
+          cells,
+          x,
+          y,
+          cache
+        )
+      ) {
         console.log("tiles are unsat");
         return null;
       }
@@ -344,7 +366,7 @@ export function* gen(
     (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
   );
 
-  return yield* WaveFunctionGenerateInternal(
+  const result = yield* WaveFunctionGenerateInternal(
     newTiles,
     tileMap,
     inverseTileMap,
@@ -352,6 +374,49 @@ export function* gen(
     width,
     height,
     seed,
-    cells
+    cells,
+    cache
   );
+
+  // Log detailed cache statistics at the end of generation
+  const stats = cache.getStats();
+  console.log("=== Support Cache Performance Statistics ===");
+  console.log(`Cache Hits: ${stats.hits.toLocaleString()}`);
+  console.log(`Cache Misses: ${stats.misses.toLocaleString()}`);
+  console.log(
+    `Total Requests: ${(stats.hits + stats.misses).toLocaleString()}`
+  );
+  console.log(`Cache Hit Rate: ${(stats.hitRate * 100).toFixed(2)}%`);
+  console.log(`Cache Miss Rate: ${((1 - stats.hitRate) * 100).toFixed(2)}%`);
+  console.log(
+    `Total Calculations: ${stats.totalCalculations.toLocaleString()}`
+  );
+  console.log(`Current Cache Size: ${stats.cacheSize.toLocaleString()}`);
+  console.log(`Peak Cache Size: ${stats.cacheSizePeak.toLocaleString()}`);
+
+  if (stats.hits + stats.misses > 0) {
+    const efficiency =
+      stats.hitRate > 0.5
+        ? "Excellent"
+        : stats.hitRate > 0.3
+        ? "Good"
+        : stats.hitRate > 0.1
+        ? "Fair"
+        : "Poor";
+    console.log(`Cache Efficiency: ${efficiency}`);
+
+    // Calculate performance impact
+    const savedCalculations = stats.hits;
+    const totalWork = stats.totalCalculations + savedCalculations;
+    const workSaved = totalWork > 0 ? (savedCalculations / totalWork) * 100 : 0;
+    console.log(
+      `Work Saved: ${workSaved.toFixed(
+        2
+      )}% (${savedCalculations.toLocaleString()} calculations avoided)`
+    );
+  }
+
+  console.log("=============================================");
+
+  return result;
 }

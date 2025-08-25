@@ -15,10 +15,11 @@ The `calculateSupport` function was identified as a major performance bottleneck
 
 ### 1. Caching System
 
-- **Support Cache**: Added a global cache to store previously calculated support values
+- **Support Cache**: Added an object-oriented cache to store previously calculated support values
 - **Hash-Based Lookup**: Implemented hash-based cache lookup for faster matching
-- **LRU Eviction**: Added cache size management with LRU-style eviction (1000 entries max)
+- **LRU Eviction**: Added cache size management with LRU-style eviction (10000 entries max)
 - **Cache Statistics**: Added monitoring capabilities to track cache hit rates
+- **Clean Architecture**: Cache is instantiated per generation and passed as parameter (no global state)
 
 ### 2. Algorithmic Improvements
 
@@ -37,18 +38,21 @@ The `calculateSupport` function was identified as a major performance bottleneck
 ### Usage
 
 ```typescript
-import { getCacheStats, clearSupportCache } from "./src/sat/support-cache";
+import { SupportCache } from "./src/sat/support-cache";
 
-// Clear cache at the start of generation
-clearSupportCache();
+// Create cache instance (done automatically in gen() function)
+const cache = new SupportCache();
 
 // Run your wave function generation
 // ...
 
 // Get cache performance stats
-const stats = getCacheStats();
+const stats = cache.getStats();
 console.log(`Cache hit rate: ${(stats.hitRate * 100).toFixed(2)}%`);
 console.log(`Cache hits: ${stats.hits}, misses: ${stats.misses}`);
+
+// Clear cache if needed
+cache.clear();
 ```
 
 ### Expected Improvements
@@ -65,9 +69,11 @@ The cache functionality has been extracted into a separate module (`src/sat/supp
 
 ```typescript
 // support-cache.ts
-export function calculateSupport(...): Bitset
-export function clearSupportCache(): void
-export function getCacheStats(): CacheStats
+export class SupportCache {
+  calculateSupport(...): Bitset
+  clear(): void
+  getStats(): CacheStats
+}
 ```
 
 ### Cache Implementation
