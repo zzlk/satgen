@@ -9,11 +9,13 @@ interface SupportCacheEntry {
 }
 
 export class SupportCache {
-  private cache: SupportCacheEntry[] = [];
+  private cache: Map<string, SupportCacheEntry> = new Map();
   private hits = 0;
   private misses = 0;
   private totalCalculations = 0;
   private cacheSizePeak = 0;
+  private readonly maxCacheSize = 10000;
+  private readonly evictionBatchSize = 100;
 
   // Generate a simple hash for a bitset to speed up cache lookups
   private bitsetHash(bitset: Bitset): string {
@@ -21,7 +23,7 @@ export class SupportCache {
   }
 
   clear(): void {
-    this.cache = [];
+    this.cache.clear();
     this.hits = 0;
     this.misses = 0;
     this.totalCalculations = 0;
@@ -43,7 +45,7 @@ export class SupportCache {
       misses: this.misses,
       hitRate: total > 0 ? this.hits / total : 0,
       totalCalculations: this.totalCalculations,
-      cacheSize: this.cache.length,
+      cacheSize: this.cache.size,
       cacheSizePeak: this.cacheSizePeak,
       averageCacheSize: this.totalCalculations > 0 ? this.cacheSizePeak : 0,
     };
@@ -55,18 +57,17 @@ export class SupportCache {
     cell: Bitset,
     direction: number
   ): Bitset {
-    // Check cache first using hash for faster lookup
+    // Create a unique key for this cache entry
     const cellHash = this.bitsetHash(cell);
-    for (const cached of this.cache) {
-      if (
-        cached.hash === cellHash &&
-        cached.direction === direction &&
-        cached.cell.equals(cell)
-      ) {
-        this.hits++;
-        return cached.support.clone();
-      }
+    const cacheKey = `${cellHash}:${direction}`;
+
+    // Check cache using O(1) hash map lookup
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.cell.equals(cell)) {
+      this.hits++;
+      return cached.support.clone();
     }
+
     this.misses++;
     this.totalCalculations++;
 
@@ -85,10 +86,18 @@ export class SupportCache {
     }
 
     // Cache the result with LRU-style eviction
-    if (this.cache.length >= 10000) {
-      this.cache.splice(0, 100);
+    if (this.cache.size >= this.maxCacheSize) {
+      // Remove oldest entries to make room
+      const entriesToRemove = Array.from(this.cache.keys()).slice(
+        0,
+        this.evictionBatchSize
+      );
+      for (const key of entriesToRemove) {
+        this.cache.delete(key);
+      }
     }
-    this.cache.push({
+
+    this.cache.set(cacheKey, {
       cell: cell.clone(),
       direction,
       support: support!.clone(),
@@ -96,8 +105,8 @@ export class SupportCache {
     });
 
     // Track peak cache size
-    if (this.cache.length > this.cacheSizePeak) {
-      this.cacheSizePeak = this.cache.length;
+    if (this.cache.size > this.cacheSizePeak) {
+      this.cacheSizePeak = this.cache.size;
     }
 
     return support!;

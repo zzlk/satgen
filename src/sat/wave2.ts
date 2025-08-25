@@ -393,6 +393,7 @@ export function* gen(
   );
   console.log(`Current Cache Size: ${stats.cacheSize.toLocaleString()}`);
   console.log(`Peak Cache Size: ${stats.cacheSizePeak.toLocaleString()}`);
+  console.log(`Cache Implementation: Hash Map (O(1) lookup)`);
 
   if (stats.hits + stats.misses > 0) {
     const efficiency =
