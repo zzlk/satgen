@@ -186,9 +186,7 @@ function* WaveFunctionGenerateInternal(
   // Check that the cell array is valid
   // assertBorderConditionsForAllCells(tiles, width, height, cells);
 
-  const sortedCells = findCells(width, height, cells);
-
-  for (const { x, y } of sortedCells) {
+  for (const { x, y } of findCells(width, height, cells)) {
     switch (cells[y * width + x].size) {
       case 0:
         throw "invalid precondition";
@@ -232,6 +230,8 @@ function* WaveFunctionGenerateInternal(
 
           if (ret !== null) {
             return ret;
+          } else {
+            cells = backup;
           }
         }
     }
