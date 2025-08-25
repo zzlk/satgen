@@ -18,16 +18,16 @@ const DIRECTIONS: Array<{
 ];
 
 function assertBorderConditionsForAllCells(
-  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
   width: number,
   height: number,
-  cells: Array<Set<string>>
+  cells: Array<Set<number>>
 ) {
   function assertBorderConditionsForCell(
-    tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+    tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
     width: number,
     height: number,
-    cells: Array<Set<string>>,
+    cells: Array<Set<number>>,
     x: number,
     y: number
   ) {
@@ -70,10 +70,10 @@ function assertBorderConditionsForAllCells(
   }
 }
 
-function findCells(
+function findCells<T>(
   width: number,
   height: number,
-  cells: Array<Set<string>>
+  cells: Array<Set<T>>
 ): Array<{ x: number; y: number; count: number }> {
   const result = [];
   for (let y = 0; y < height; y++) {
@@ -90,11 +90,11 @@ function findCells(
 }
 
 function calculateSupport(
-  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
-  cell: Set<string>,
+  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+  cell: Set<number>,
   direction: number
-): Set<string> {
-  const support = new Set<string>();
+): Set<number> {
+  const support = new Set<number>();
 
   for (const tileId of cell) {
     for (const supportedTile of tiles.get(tileId)![direction]) {
@@ -106,10 +106,10 @@ function calculateSupport(
 }
 
 function propagateRemoval(
-  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
   width: number,
   height: number,
-  cells: Array<Set<string>>,
+  cells: Array<Set<number>>,
   x: number,
   y: number
 ): boolean {
@@ -172,15 +172,18 @@ function propagateRemoval(
 }
 
 function* WaveFunctionGenerateInternal(
-  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
+  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+  tilemap: Map<string, number>,
+  inverseTileMap: Map<number, string>,
   width: number,
   height: number,
   seed: number,
-  cells: Array<Set<string>>
+  cells: Array<Set<number>>
 ): Generator<Array<Set<string>>, Array<string> | null> {
   // base case, entire cell array is collapsed.
   if (cells.every((c) => c.size === 1)) {
-    return cells.map((c) => c.keys().next().value!);
+    // return cells.map((c) => c.keys().next().value!);
+    return cells.map((c) => inverseTileMap.get(c.keys().next().value!)!);
   }
 
   // Check that the cell array is valid
@@ -217,11 +220,15 @@ function* WaveFunctionGenerateInternal(
             continue;
           }
 
-          yield cells;
+          yield cells.map(
+            (c) => new Set(c.keys().map((i) => inverseTileMap.get(i)!))
+          );
 
           // recurse
           const ret = yield* WaveFunctionGenerateInternal(
             tiles,
+            tilemap,
+            inverseTileMap,
             width,
             height,
             seed + 1,
@@ -265,21 +272,57 @@ export function* gen(
     }
   }
 
+  // Create maps to map from string tile ids to integers from 0 to n
+  const tileMap = new Map<string, number>();
+  let index = 0;
+  for (const tile of tiles.keys()) {
+    tileMap.set(tile, index);
+    index++;
+  }
+
+  // create the inverse mapping to the above
+  const inverseTileMap = new Map<number, string>();
+  for (const [tile, index] of tileMap) {
+    inverseTileMap.set(index, tile);
+  }
+
+  // create new tiles that has the mapped contents
+  const newTiles = new Map<
+    number,
+    [Set<number>, Set<number>, Set<number>, Set<number>]
+  >();
+  for (const [tile, [n, e, s, w]] of tiles) {
+    newTiles.set(tileMap.get(tile)!, [
+      new Set(n.keys().map((t) => tileMap.get(t)!)),
+      new Set(e.keys().map((t) => tileMap.get(t)!)),
+      new Set(s.keys().map((t) => tileMap.get(t)!)),
+      new Set(w.keys().map((t) => tileMap.get(t)!)),
+    ]);
+  }
+
   const cells = new Array(width * height)
     .fill(null)
-    .map(() => new Set(tiles.keys()));
+    .map(() => new Set(newTiles.keys()));
 
   // make sure that the initial state is valid, propagate removal for all cells
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (!propagateRemoval(tiles, width, height, cells, x, y)) {
+      if (!propagateRemoval(newTiles, width, height, cells, x, y)) {
         console.log("tiles are unsat");
         return null;
       }
     }
   }
 
-  yield cells;
+  yield cells.map((c) => new Set(c.keys().map((i) => inverseTileMap.get(i)!)));
 
-  return yield* WaveFunctionGenerateInternal(tiles, width, height, seed, cells);
+  return yield* WaveFunctionGenerateInternal(
+    newTiles,
+    tileMap,
+    inverseTileMap,
+    width,
+    height,
+    seed,
+    cells
+  );
 }
