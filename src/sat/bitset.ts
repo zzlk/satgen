@@ -143,6 +143,36 @@ class Bitset {
     result.bits.set(this.bits);
     return result;
   }
+
+  // Helper methods for Set-like operations
+  isSubsetOf(other: Bitset): boolean {
+    if (other.size() !== this.size()) {
+      return false;
+    }
+    for (let i = 0; i < this.bits.length; i++) {
+      if ((this.bits[i] & ~other.bits[i]) !== 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  *keys(): IterableIterator<number> {
+    for (let i = 0; i < this._size; i++) {
+      if (this.get(i)) {
+        yield i;
+      }
+    }
+  }
+
+  getFirstSetBit(): number | null {
+    for (let i = 0; i < this._size; i++) {
+      if (this.get(i)) {
+        return i;
+      }
+    }
+    return null;
+  }
 }
 
 export default Bitset;

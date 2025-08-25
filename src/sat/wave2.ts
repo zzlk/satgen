@@ -1,8 +1,5 @@
 import { deterministicShuffle } from "./deterministicShuffle";
-
-function areSetsEqual<T>(a: Set<T>, b: Set<T>) {
-  return a.size === b.size && [...a].every((value) => b.has(value));
-}
+import Bitset from "./bitset";
 
 const DIRECTIONS: Array<{
   name: string;
@@ -18,16 +15,16 @@ const DIRECTIONS: Array<{
 ];
 
 function assertBorderConditionsForAllCells(
-  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   width: number,
   height: number,
-  cells: Array<Set<number>>
+  cells: Array<Bitset>
 ) {
   function assertBorderConditionsForCell(
-    tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+    tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
     width: number,
     height: number,
-    cells: Array<Set<number>>,
+    cells: Array<Bitset>,
     x: number,
     y: number
   ) {
@@ -70,16 +67,16 @@ function assertBorderConditionsForAllCells(
   }
 }
 
-function findCells<T>(
+function findCells(
   width: number,
   height: number,
-  cells: Array<Set<T>>
+  cells: Array<Bitset>
 ): Array<{ x: number; y: number; count: number }> {
   const result = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (cells[y * width + x].size > 1) {
-        result.push({ x, y, count: cells[y * width + x].size });
+      if (cells[y * width + x].count() > 1) {
+        result.push({ x, y, count: cells[y * width + x].count() });
       }
     }
   }
@@ -90,15 +87,18 @@ function findCells<T>(
 }
 
 function calculateSupport(
-  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
-  cell: Set<number>,
+  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  cell: Bitset,
   direction: number
-): Set<number> {
-  const support = new Set<number>();
+): Bitset {
+  // Find the maximum tile ID to size the bitset correctly
+  const maxTileId = Math.max(...tiles.keys());
+  const support = new Bitset(maxTileId + 1);
 
-  for (const tileId of cell) {
-    for (const supportedTile of tiles.get(tileId)![direction]) {
-      support.add(supportedTile);
+  for (const tileId of cell.keys()) {
+    const directionSet = tiles.get(tileId)![direction];
+    for (const supportedTile of directionSet.keys()) {
+      support.set(supportedTile, true);
     }
   }
 
@@ -106,10 +106,10 @@ function calculateSupport(
 }
 
 function propagateRemoval(
-  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   width: number,
   height: number,
-  cells: Array<Set<number>>,
+  cells: Array<Bitset>,
   x: number,
   y: number
 ): boolean {
@@ -130,7 +130,7 @@ function propagateRemoval(
   while (queue.length > 0) {
     let { x, y } = queue.shift()!;
 
-    const cellBackup = new Set(cells[y * width + x]);
+    const cellBackup = cells[y * width + x].clone();
 
     for (let direction of DIRECTIONS) {
       const nx = x + direction.dx;
@@ -150,12 +150,12 @@ function propagateRemoval(
       cells[y * width + x] = cells[y * width + x].intersection(support);
     }
 
-    if (cells[y * width + x].size === 0) {
+    if (cells[y * width + x].count() === 0) {
       return false; // unsatisfiable
     }
 
     // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
-    if (!areSetsEqual(cells[y * width + x], cellBackup)) {
+    if (!cells[y * width + x].equals(cellBackup)) {
       for (const direction of DIRECTIONS) {
         const nx = x + direction.dx;
         const ny = y + direction.dy;
@@ -172,25 +172,22 @@ function propagateRemoval(
 }
 
 function* WaveFunctionGenerateInternal(
-  tiles: Map<number, [Set<number>, Set<number>, Set<number>, Set<number>]>,
+  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   tilemap: Map<string, number>,
   inverseTileMap: Map<number, string>,
   width: number,
   height: number,
   seed: number,
-  cells: Array<Set<number>>
+  cells: Array<Bitset>
 ): Generator<Array<Set<string>>, Array<string> | null> {
   // base case, entire cell array is collapsed.
-  if (cells.every((c) => c.size === 1)) {
+  if (cells.every((c) => c.count() === 1)) {
     // return cells.map((c) => c.keys().next().value!);
-    return cells.map((c) => inverseTileMap.get(c.keys().next().value!)!);
+    return cells.map((c) => inverseTileMap.get(c.getFirstSetBit()!)!);
   }
 
-  // Check that the cell array is valid
-  // assertBorderConditionsForAllCells(tiles, width, height, cells);
-
   for (const { x, y } of findCells(width, height, cells)) {
-    switch (cells[y * width + x].size) {
+    switch (cells[y * width + x].count()) {
       case 0:
         throw "invalid precondition";
 
@@ -200,7 +197,7 @@ function* WaveFunctionGenerateInternal(
       default:
         // collapse this cell.
         let possibleTiles = deterministicShuffle(
-          Array.from(cells[y * width + x]),
+          Array.from(cells[y * width + x].keys()),
           seed,
           x,
           y
@@ -208,10 +205,10 @@ function* WaveFunctionGenerateInternal(
 
         for (const tile of possibleTiles) {
           // deep clone cells:
-          const backup = cells.map((c) => new Set(c));
+          const backup = cells.map((c) => c.clone());
 
           cells[y * width + x].clear();
-          cells[y * width + x].add(tile);
+          cells[y * width + x].set(tile, true);
 
           // propagate the effects of the removal
           if (!propagateRemoval(tiles, width, height, cells, x, y)) {
@@ -221,7 +218,8 @@ function* WaveFunctionGenerateInternal(
           }
 
           yield cells.map(
-            (c) => new Set(c.keys().map((i) => inverseTileMap.get(i)!))
+            (c) =>
+              new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
           );
 
           // recurse
@@ -287,22 +285,44 @@ export function* gen(
   }
 
   // create new tiles that has the mapped contents
-  const newTiles = new Map<
-    number,
-    [Set<number>, Set<number>, Set<number>, Set<number>]
-  >();
+  const newTiles = new Map<number, [Bitset, Bitset, Bitset, Bitset]>();
+
+  // Find the maximum tile ID to size bitsets correctly
+  const maxTileId = Math.max(...tileMap.values());
+
   for (const [tile, [n, e, s, w]] of tiles) {
-    newTiles.set(tileMap.get(tile)!, [
-      new Set(n.keys().map((t) => tileMap.get(t)!)),
-      new Set(e.keys().map((t) => tileMap.get(t)!)),
-      new Set(s.keys().map((t) => tileMap.get(t)!)),
-      new Set(w.keys().map((t) => tileMap.get(t)!)),
-    ]);
+    const tileId = tileMap.get(tile)!;
+
+    // Create bitsets for each direction
+    const northBitset = new Bitset(maxTileId + 1);
+    const eastBitset = new Bitset(maxTileId + 1);
+    const southBitset = new Bitset(maxTileId + 1);
+    const westBitset = new Bitset(maxTileId + 1);
+
+    // Set the bits for each direction
+    for (const t of n.keys()) {
+      northBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of e.keys()) {
+      eastBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of s.keys()) {
+      southBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of w.keys()) {
+      westBitset.set(tileMap.get(t)!, true);
+    }
+
+    newTiles.set(tileId, [northBitset, eastBitset, southBitset, westBitset]);
   }
 
-  const cells = new Array(width * height)
-    .fill(null)
-    .map(() => new Set(newTiles.keys()));
+  const cells = new Array(width * height).fill(null).map(() => {
+    const cell = new Bitset(maxTileId + 1);
+    for (const tileId of newTiles.keys()) {
+      cell.set(tileId, true);
+    }
+    return cell;
+  });
 
   // make sure that the initial state is valid, propagate removal for all cells
   for (let y = 0; y < height; y++) {
@@ -314,7 +334,9 @@ export function* gen(
     }
   }
 
-  yield cells.map((c) => new Set(c.keys().map((i) => inverseTileMap.get(i)!)));
+  yield cells.map(
+    (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
+  );
 
   return yield* WaveFunctionGenerateInternal(
     newTiles,

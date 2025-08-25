@@ -373,4 +373,94 @@ describe("Bitset", () => {
       expect(bs.isEmpty()).toBe(true);
     });
   });
+
+  describe("isSubsetOf", () => {
+    it("should return true when bitset is subset of other", () => {
+      const bs1 = new Bitset(8);
+      const bs2 = new Bitset(8);
+
+      bs1.set(0, true);
+      bs1.set(2, true);
+      bs2.set(0, true);
+      bs2.set(2, true);
+      bs2.set(4, true);
+
+      expect(bs1.isSubsetOf(bs2)).toBe(true);
+    });
+
+    it("should return false when bitset is not subset of other", () => {
+      const bs1 = new Bitset(8);
+      const bs2 = new Bitset(8);
+
+      bs1.set(0, true);
+      bs1.set(2, true);
+      bs2.set(0, true);
+      bs2.set(4, true);
+
+      expect(bs1.isSubsetOf(bs2)).toBe(false);
+    });
+
+    it("should return false for different sizes", () => {
+      const bs1 = new Bitset(8);
+      const bs2 = new Bitset(4);
+      expect(bs1.isSubsetOf(bs2)).toBe(false);
+    });
+
+    it("should return true for empty bitset", () => {
+      const bs1 = new Bitset(8);
+      const bs2 = new Bitset(8);
+      bs2.set(0, true);
+      expect(bs1.isSubsetOf(bs2)).toBe(true);
+    });
+  });
+
+  describe("keys", () => {
+    it("should iterate over set bits", () => {
+      const bs = new Bitset(8);
+      bs.set(0, true);
+      bs.set(2, true);
+      bs.set(5, true);
+
+      const keys = Array.from(bs.keys());
+      expect(keys).toEqual([0, 2, 5]);
+    });
+
+    it("should return empty array for empty bitset", () => {
+      const bs = new Bitset(8);
+      const keys = Array.from(bs.keys());
+      expect(keys).toEqual([]);
+    });
+
+    it("should work with large bitset", () => {
+      const bs = new Bitset(100);
+      bs.set(0, true);
+      bs.set(50, true);
+      bs.set(99, true);
+
+      const keys = Array.from(bs.keys());
+      expect(keys).toEqual([0, 50, 99]);
+    });
+  });
+
+  describe("getFirstSetBit", () => {
+    it("should return first set bit", () => {
+      const bs = new Bitset(8);
+      bs.set(2, true);
+      bs.set(0, true);
+      bs.set(5, true);
+
+      expect(bs.getFirstSetBit()).toBe(0);
+    });
+
+    it("should return null for empty bitset", () => {
+      const bs = new Bitset(8);
+      expect(bs.getFirstSetBit()).toBe(null);
+    });
+
+    it("should return correct bit for single bit set", () => {
+      const bs = new Bitset(8);
+      bs.set(3, true);
+      expect(bs.getFirstSetBit()).toBe(3);
+    });
+  });
 });
