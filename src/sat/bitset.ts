@@ -1,39 +1,46 @@
 class Bitset {
-  private bits: boolean[] = [];
+  private bits: Uint32Array;
+  private _size: number;
 
   constructor(maxValue: number) {
-    this.bits = new Array(maxValue).fill(false);
+    this._size = maxValue;
+    // Calculate how many 32-bit integers we need
+    const arraySize = Math.ceil(maxValue / 32);
+    this.bits = new Uint32Array(arraySize);
+  }
+
+  private getBitIndex(index: number): { wordIndex: number; bitOffset: number } {
+    if (index < 0 || index >= this._size) {
+      throw new Error(
+        `Index ${index} out of bounds. Valid range: 0-${this._size - 1}`
+      );
+    }
+    const wordIndex = Math.floor(index / 32);
+    const bitOffset = index % 32;
+    return { wordIndex, bitOffset };
   }
 
   get(index: number): boolean {
-    if (index < 0 || index >= this.bits.length) {
-      throw new Error(
-        `Index ${index} out of bounds. Valid range: 0-${this.bits.length - 1}`
-      );
-    }
-    return this.bits[index];
+    const { wordIndex, bitOffset } = this.getBitIndex(index);
+    return (this.bits[wordIndex] & (1 << bitOffset)) !== 0;
   }
 
   set(index: number, value: boolean = true): void {
-    if (index < 0 || index >= this.bits.length) {
-      throw new Error(
-        `Index ${index} out of bounds. Valid range: 0-${this.bits.length - 1}`
-      );
+    const { wordIndex, bitOffset } = this.getBitIndex(index);
+    if (value) {
+      this.bits[wordIndex] |= 1 << bitOffset;
+    } else {
+      this.bits[wordIndex] &= ~(1 << bitOffset);
     }
-    this.bits[index] = value;
   }
 
   clear(): void {
-    this.bits.fill(false);
+    this.bits.fill(0);
   }
 
   toggle(index: number): void {
-    if (index < 0 || index >= this.bits.length) {
-      throw new Error(
-        `Index ${index} out of bounds. Valid range: 0-${this.bits.length - 1}`
-      );
-    }
-    this.bits[index] = !this.bits[index];
+    const { wordIndex, bitOffset } = this.getBitIndex(index);
+    this.bits[wordIndex] ^= 1 << bitOffset;
   }
 
   has(index: number): boolean {
@@ -41,11 +48,20 @@ class Bitset {
   }
 
   size(): number {
-    return this.bits.length;
+    return this._size;
   }
 
   count(): number {
-    return this.bits.filter((bit) => bit).length;
+    let count = 0;
+    for (let i = 0; i < this.bits.length; i++) {
+      let word = this.bits[i];
+      // Count bits set in this 32-bit word
+      while (word !== 0) {
+        count += word & 1;
+        word >>>= 1;
+      }
+    }
+    return count;
   }
 
   isEmpty(): boolean {
@@ -53,15 +69,23 @@ class Bitset {
   }
 
   isFull(): boolean {
-    return this.count() === this.bits.length;
+    return this.count() === this._size;
   }
 
   toString(): string {
-    return this.bits.map((bit) => (bit ? "1" : "0")).join("");
+    let result = "";
+    for (let i = 0; i < this._size; i++) {
+      result += this.get(i) ? "1" : "0";
+    }
+    return result;
   }
 
   toArray(): boolean[] {
-    return [...this.bits];
+    const result = new Array(this._size);
+    for (let i = 0; i < this._size; i++) {
+      result[i] = this.get(i);
+    }
+    return result;
   }
 
   // Set operations
@@ -69,9 +93,9 @@ class Bitset {
     if (other.size() !== this.size()) {
       throw new Error("Bitsets must have the same size for union operation");
     }
-    const result = new Bitset(this.size());
-    for (let i = 0; i < this.size(); i++) {
-      result.set(i, this.get(i) || other.get(i));
+    const result = new Bitset(this._size);
+    for (let i = 0; i < this.bits.length; i++) {
+      result.bits[i] = this.bits[i] | other.bits[i];
     }
     return result;
   }
@@ -82,9 +106,9 @@ class Bitset {
         "Bitsets must have the same size for intersection operation"
       );
     }
-    const result = new Bitset(this.size());
-    for (let i = 0; i < this.size(); i++) {
-      result.set(i, this.get(i) && other.get(i));
+    const result = new Bitset(this._size);
+    for (let i = 0; i < this.bits.length; i++) {
+      result.bits[i] = this.bits[i] & other.bits[i];
     }
     return result;
   }
@@ -95,9 +119,9 @@ class Bitset {
         "Bitsets must have the same size for difference operation"
       );
     }
-    const result = new Bitset(this.size());
-    for (let i = 0; i < this.size(); i++) {
-      result.set(i, this.get(i) && !other.get(i));
+    const result = new Bitset(this._size);
+    for (let i = 0; i < this.bits.length; i++) {
+      result.bits[i] = this.bits[i] & ~other.bits[i];
     }
     return result;
   }
@@ -106,8 +130,8 @@ class Bitset {
     if (other.size() !== this.size()) {
       return false;
     }
-    for (let i = 0; i < this.size(); i++) {
-      if (this.get(i) !== other.get(i)) {
+    for (let i = 0; i < this.bits.length; i++) {
+      if (this.bits[i] !== other.bits[i]) {
         return false;
       }
     }
@@ -115,10 +139,8 @@ class Bitset {
   }
 
   clone(): Bitset {
-    const result = new Bitset(this.size());
-    for (let i = 0; i < this.size(); i++) {
-      result.set(i, this.get(i));
-    }
+    const result = new Bitset(this._size);
+    result.bits.set(this.bits);
     return result;
   }
 }
