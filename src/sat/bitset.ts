@@ -100,6 +100,16 @@ class Bitset {
     return result;
   }
 
+  // In-place union for better performance when we don't need to preserve the original
+  unionInPlace(other: Bitset): void {
+    if (other.size() !== this.size()) {
+      throw new Error("Bitsets must have the same size for union operation");
+    }
+    for (let i = 0; i < this.bits.length; i++) {
+      this.bits[i] |= other.bits[i];
+    }
+  }
+
   intersection(other: Bitset): Bitset {
     if (other.size() !== this.size()) {
       throw new Error(

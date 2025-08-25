@@ -1,5 +1,10 @@
 import { deterministicShuffle } from "./deterministicShuffle";
 import Bitset from "./bitset";
+import {
+  calculateSupport,
+  clearSupportCache,
+  getCacheStats,
+} from "./support-cache";
 
 const DIRECTIONS: Array<{
   name: string;
@@ -96,25 +101,6 @@ function findCells(
   result.sort((a, b) => a.count - b.count);
 
   return result;
-}
-
-function calculateSupport(
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-  bitsetSize: number,
-  cell: Bitset,
-  direction: number
-): Bitset {
-  // Find the maximum tile ID to size the bitset correctly
-  const support = new Bitset(bitsetSize);
-
-  for (const tileId of cell.keys()) {
-    const directionSet = tiles.get(tileId)![direction];
-    for (const supportedTile of directionSet.keys()) {
-      support.set(supportedTile, true);
-    }
-  }
-
-  return support;
 }
 
 function propagateRemoval(
@@ -270,6 +256,8 @@ export function* gen(
   height: number,
   seed: number
 ): Generator<Array<Set<string>>, Array<string> | null> {
+  // Clear support cache at the start of each generation
+  clearSupportCache();
   // Validate that tile connections are commutative
   for (const [tileA, connectionsA] of tiles) {
     for (const direction of DIRECTIONS) {
