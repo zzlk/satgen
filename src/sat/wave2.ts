@@ -16,12 +16,14 @@ const DIRECTIONS: Array<{
 
 function assertBorderConditionsForAllCells(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  bitsetSize: number,
   width: number,
   height: number,
   cells: Array<Bitset>
 ) {
   function assertBorderConditionsForCell(
     tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+    bitsetSize: number,
     width: number,
     height: number,
     cells: Array<Bitset>,
@@ -39,6 +41,7 @@ function assertBorderConditionsForAllCells(
       // Check that the neighbors support the current cell
       const support = calculateSupport(
         tiles,
+        bitsetSize,
         cells[ny * width + nx],
         (direction.d + 2) % 4
       );
@@ -50,6 +53,7 @@ function assertBorderConditionsForAllCells(
       // Check that the current cell (x, y) supports all neighbors
       const neighborSupport = calculateSupport(
         tiles,
+        bitsetSize,
         cells[y * width + x],
         direction.d
       );
@@ -62,7 +66,15 @@ function assertBorderConditionsForAllCells(
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      assertBorderConditionsForCell(tiles, width, height, cells, x, y);
+      assertBorderConditionsForCell(
+        tiles,
+        bitsetSize,
+        width,
+        height,
+        cells,
+        x,
+        y
+      );
     }
   }
 }
@@ -88,12 +100,12 @@ function findCells(
 
 function calculateSupport(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  bitsetSize: number,
   cell: Bitset,
   direction: number
 ): Bitset {
   // Find the maximum tile ID to size the bitset correctly
-  const maxTileId = Math.max(...tiles.keys());
-  const support = new Bitset(maxTileId + 1);
+  const support = new Bitset(bitsetSize);
 
   for (const tileId of cell.keys()) {
     const directionSet = tiles.get(tileId)![direction];
@@ -107,6 +119,7 @@ function calculateSupport(
 
 function propagateRemoval(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  bitsetSize: number,
   width: number,
   height: number,
   cells: Array<Bitset>,
@@ -142,6 +155,7 @@ function propagateRemoval(
 
       const support = calculateSupport(
         tiles,
+        bitsetSize,
         cells[ny * width + nx],
         (direction.d + 2) % 4
       );
@@ -175,6 +189,7 @@ function* WaveFunctionGenerateInternal(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   tilemap: Map<string, number>,
   inverseTileMap: Map<number, string>,
+  bitsetSize: number,
   width: number,
   height: number,
   seed: number,
@@ -211,7 +226,9 @@ function* WaveFunctionGenerateInternal(
           cells[y * width + x].set(tile, true);
 
           // propagate the effects of the removal
-          if (!propagateRemoval(tiles, width, height, cells, x, y)) {
+          if (
+            !propagateRemoval(tiles, bitsetSize, width, height, cells, x, y)
+          ) {
             // placing this tile was unsatisfiable, restore the previous state
             cells = backup;
             continue;
@@ -227,6 +244,7 @@ function* WaveFunctionGenerateInternal(
             tiles,
             tilemap,
             inverseTileMap,
+            bitsetSize,
             width,
             height,
             seed + 1,
@@ -288,16 +306,16 @@ export function* gen(
   const newTiles = new Map<number, [Bitset, Bitset, Bitset, Bitset]>();
 
   // Find the maximum tile ID to size bitsets correctly
-  const maxTileId = Math.max(...tileMap.values());
+  const bitsetSize = Math.max(...tileMap.values()) + 1;
 
   for (const [tile, [n, e, s, w]] of tiles) {
     const tileId = tileMap.get(tile)!;
 
     // Create bitsets for each direction
-    const northBitset = new Bitset(maxTileId + 1);
-    const eastBitset = new Bitset(maxTileId + 1);
-    const southBitset = new Bitset(maxTileId + 1);
-    const westBitset = new Bitset(maxTileId + 1);
+    const northBitset = new Bitset(bitsetSize);
+    const eastBitset = new Bitset(bitsetSize);
+    const southBitset = new Bitset(bitsetSize);
+    const westBitset = new Bitset(bitsetSize);
 
     // Set the bits for each direction
     for (const t of n.keys()) {
@@ -317,7 +335,7 @@ export function* gen(
   }
 
   const cells = new Array(width * height).fill(null).map(() => {
-    const cell = new Bitset(maxTileId + 1);
+    const cell = new Bitset(bitsetSize);
     for (const tileId of newTiles.keys()) {
       cell.set(tileId, true);
     }
@@ -327,7 +345,7 @@ export function* gen(
   // make sure that the initial state is valid, propagate removal for all cells
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (!propagateRemoval(newTiles, width, height, cells, x, y)) {
+      if (!propagateRemoval(newTiles, bitsetSize, width, height, cells, x, y)) {
         console.log("tiles are unsat");
         return null;
       }
@@ -342,6 +360,7 @@ export function* gen(
     newTiles,
     tileMap,
     inverseTileMap,
+    bitsetSize,
     width,
     height,
     seed,
