@@ -14,7 +14,7 @@ export class SupportCache {
   private misses = 0;
   private totalCalculations = 0;
   private cacheSizePeak = 0;
-  private readonly maxCacheSize = 10000;
+  private readonly maxCacheSize = 50000;
   private readonly evictionBatchSize = 100;
 
   // Generate a simple hash for a bitset to speed up cache lookups
