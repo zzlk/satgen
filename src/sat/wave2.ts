@@ -261,6 +261,57 @@ function* WaveFunctionGenerateInternal(
   return null;
 }
 
+function remapTiles(
+  tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>
+): {
+  tileMap: Map<string, number>;
+  inverseTileMap: Map<number, string>;
+  newTiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>;
+  bitsetSize: number;
+} {
+  const tileMap = new Map<string, number>();
+  let index = 0;
+  for (const tile of tiles.keys()) {
+    tileMap.set(tile, index);
+    index++;
+  }
+
+  const inverseTileMap = new Map<number, string>();
+  for (const [tile, index] of tileMap) {
+    inverseTileMap.set(index, tile);
+  }
+
+  const newTiles = new Map<number, [Bitset, Bitset, Bitset, Bitset]>();
+
+  const bitsetSize = Math.max(...tileMap.values()) + 1;
+
+  for (const [tile, [n, e, s, w]] of tiles) {
+    const tileId = tileMap.get(tile)!;
+
+    const northBitset = new Bitset(bitsetSize);
+    const eastBitset = new Bitset(bitsetSize);
+    const southBitset = new Bitset(bitsetSize);
+    const westBitset = new Bitset(bitsetSize);
+
+    for (const t of n.keys()) {
+      northBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of e.keys()) {
+      eastBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of s.keys()) {
+      southBitset.set(tileMap.get(t)!, true);
+    }
+    for (const t of w.keys()) {
+      westBitset.set(tileMap.get(t)!, true);
+    }
+
+    newTiles.set(tileId, [northBitset, eastBitset, southBitset, westBitset]);
+  }
+
+  return { tileMap, inverseTileMap, newTiles, bitsetSize };
+}
+
 export function* gen(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
   width: number,
@@ -269,6 +320,7 @@ export function* gen(
 ): Generator<Array<Set<string>>, Array<string> | null> {
   // Create support cache instance
   const cache = new SupportCache();
+
   // Validate that tile connections are commutative
   for (const [tileA, connectionsA] of tiles) {
     for (const direction of DIRECTIONS) {
@@ -287,52 +339,10 @@ export function* gen(
     }
   }
 
-  // Create maps to map from string tile ids to integers from 0 to n
-  const tileMap = new Map<string, number>();
-  let index = 0;
-  for (const tile of tiles.keys()) {
-    tileMap.set(tile, index);
-    index++;
-  }
+  // Remap tiles from string ids to sequential integers so they can be efficiently packed into bitsets
+  const { tileMap, inverseTileMap, newTiles, bitsetSize } = remapTiles(tiles);
 
-  // create the inverse mapping to the above
-  const inverseTileMap = new Map<number, string>();
-  for (const [tile, index] of tileMap) {
-    inverseTileMap.set(index, tile);
-  }
-
-  // create new tiles that has the mapped contents
-  const newTiles = new Map<number, [Bitset, Bitset, Bitset, Bitset]>();
-
-  // Find the maximum tile ID to size bitsets correctly
-  const bitsetSize = Math.max(...tileMap.values()) + 1;
-
-  for (const [tile, [n, e, s, w]] of tiles) {
-    const tileId = tileMap.get(tile)!;
-
-    // Create bitsets for each direction
-    const northBitset = new Bitset(bitsetSize);
-    const eastBitset = new Bitset(bitsetSize);
-    const southBitset = new Bitset(bitsetSize);
-    const westBitset = new Bitset(bitsetSize);
-
-    // Set the bits for each direction
-    for (const t of n.keys()) {
-      northBitset.set(tileMap.get(t)!, true);
-    }
-    for (const t of e.keys()) {
-      eastBitset.set(tileMap.get(t)!, true);
-    }
-    for (const t of s.keys()) {
-      southBitset.set(tileMap.get(t)!, true);
-    }
-    for (const t of w.keys()) {
-      westBitset.set(tileMap.get(t)!, true);
-    }
-
-    newTiles.set(tileId, [northBitset, eastBitset, southBitset, westBitset]);
-  }
-
+  // initialize initial cells to all possible tiles
   const cells = new Array(width * height).fill(null).map(() => {
     const cell = new Bitset(bitsetSize);
     for (const tileId of newTiles.keys()) {
@@ -362,6 +372,7 @@ export function* gen(
     }
   }
 
+  // Yield initial state so the UI can see basically an empty grid
   yield cells.map(
     (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
   );
