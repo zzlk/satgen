@@ -2,6 +2,9 @@ import { deterministicShuffle } from "./deterministicShuffle";
 import Bitset from "./bitset";
 import { SupportCache } from "./support-cache";
 
+// cool idea for initializing the board
+// sweep across
+
 const DIRECTIONS: Array<{
   name: string;
   oppositeName: string;
@@ -112,6 +115,8 @@ function propagateRemoval(
   y: number,
   cache: SupportCache
 ): boolean {
+  const backup = new Map<{ x: number; y: number }, Bitset>();
+
   const queue = new Array<{ x: number; y: number }>();
 
   // Push the four neighbors of {x, y}
@@ -151,11 +156,23 @@ function propagateRemoval(
     }
 
     if (cells[y * width + x].count() === 0) {
+      cells[y * width + x] = cellBackup;
+
+      // restore the cells to their original state before we started messing with it
+      for (const [{ x, y }, cell] of backup.entries()) {
+        cells[y * width + x] = cell;
+      }
+
       return false; // unsatisfiable
     }
 
     // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
     if (!cells[y * width + x].equals(cellBackup)) {
+      // if this is the first time visiting this cell, then backup its state.
+      if (!backup.has({ x, y })) {
+        backup.set({ x, y }, cellBackup);
+      }
+
       for (const direction of DIRECTIONS) {
         const nx = x + direction.dx;
         const ny = y + direction.dy;
@@ -208,7 +225,7 @@ function* WaveFunctionGenerateInternal(
 
         for (const tile of possibleTiles) {
           // deep clone cells:
-          const backup = cells.map((c) => c.clone());
+          const backup = cells[y * width + x].clone();
 
           cells[y * width + x].clear();
           cells[y * width + x].set(tile, true);
@@ -227,7 +244,7 @@ function* WaveFunctionGenerateInternal(
             )
           ) {
             // placing this tile was unsatisfiable, restore the previous state
-            cells = backup;
+            cells[y * width + x] = backup;
             continue;
           }
 
@@ -255,7 +272,7 @@ function* WaveFunctionGenerateInternal(
           if (ret !== null) {
             return ret;
           } else {
-            cells = backup;
+            cells[y * width + x] = backup;
           }
         }
     }

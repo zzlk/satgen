@@ -9,6 +9,28 @@ class Bitset {
     this.bits = new Uint32Array(arraySize);
   }
 
+  /**
+   * Creates a new bitset with all bits set to 1
+   * @param maxValue The maximum value (exclusive) for the bitset
+   * @returns A new bitset with all bits set
+   */
+  static createFull(maxValue: number): Bitset {
+    const bitset = new Bitset(maxValue);
+    // Set all 32-bit words to all 1s
+    bitset.bits.fill(0xffffffff);
+
+    // Handle the last word if it's not completely full
+    const lastWordIndex = bitset.bits.length - 1;
+    const bitsInLastWord = maxValue % 32;
+    if (bitsInLastWord !== 0) {
+      // Clear the bits beyond maxValue in the last word
+      const mask = (1 << bitsInLastWord) - 1;
+      bitset.bits[lastWordIndex] = mask;
+    }
+
+    return bitset;
+  }
+
   private getBitIndex(index: number): { wordIndex: number; bitOffset: number } {
     if (index < 0 || index >= this._size) {
       throw new Error(
@@ -107,6 +129,18 @@ class Bitset {
     }
     for (let i = 0; i < this.bits.length; i++) {
       this.bits[i] |= other.bits[i];
+    }
+  }
+
+  // In-place intersection for better performance when we don't need to preserve the original
+  intersectInPlace(other: Bitset): void {
+    if (other.size() !== this.size()) {
+      throw new Error(
+        "Bitsets must have the same size for intersection operation"
+      );
+    }
+    for (let i = 0; i < this.bits.length; i++) {
+      this.bits[i] &= other.bits[i];
     }
   }
 
