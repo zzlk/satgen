@@ -147,16 +147,14 @@ export default function () {
         // Render partial result from the current state
         const currentState = next.value;
 
-        if (iteration % 50 === 0) {
-          await renderPartialResultFromState(
-            currentState,
-            targetWidth,
-            targetHeight,
-            iteration
-          );
+        await renderPartialResultFromState(
+          currentState,
+          targetWidth,
+          targetHeight,
+          iteration
+        );
 
-          await new Promise((resolve) => setTimeout(resolve, sleepTime));
-        }
+        await new Promise((resolve) => setTimeout(resolve, sleepTime));
 
         iteration++;
       }

@@ -172,6 +172,7 @@ function propagateRemoval(
 }
 
 function* WaveFunctionGenerateInternal(
+  recursionDepth: number,
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   tilemap: Map<string, number>,
   inverseTileMap: Map<number, string>,
@@ -230,13 +231,16 @@ function* WaveFunctionGenerateInternal(
             continue;
           }
 
-          yield cells.map(
-            (c) =>
-              new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
-          );
+          if (recursionDepth % 99999 === 0) {
+            yield cells.map(
+              (c) =>
+                new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
+            );
+          }
 
           // recurse
           const ret = yield* WaveFunctionGenerateInternal(
+            recursionDepth + 1,
             tiles,
             tilemap,
             inverseTileMap,
@@ -343,12 +347,13 @@ export function* gen(
   const { tileMap, inverseTileMap, newTiles, bitsetSize } = remapTiles(tiles);
 
   // initialize initial cells to all possible tiles
+  const allTileCell = new Bitset(bitsetSize);
+  for (const tileId of newTiles.keys()) {
+    allTileCell.set(tileId, true);
+  }
+
   const cells = new Array(width * height).fill(null).map(() => {
-    const cell = new Bitset(bitsetSize);
-    for (const tileId of newTiles.keys()) {
-      cell.set(tileId, true);
-    }
-    return cell;
+    return allTileCell.clone();
   });
 
   // make sure that the initial state is valid, propagate removal for all cells
@@ -378,6 +383,7 @@ export function* gen(
   );
 
   const result = yield* WaveFunctionGenerateInternal(
+    0,
     newTiles,
     tileMap,
     inverseTileMap,
