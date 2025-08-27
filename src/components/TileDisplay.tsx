@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
 
@@ -62,6 +62,7 @@ export default function TileDisplay({
     enhancedBorderCount: number;
     addedBorders: number;
   } | null>(null);
+  const prevEnhancedTilesRef = useRef<Tile[]>([]);
 
   // Memoize the tile collection creation to avoid recreating it on every render
   const tileCollection = useMemo(() => {
@@ -86,9 +87,9 @@ export default function TileDisplay({
       return mergedCollection.tiles;
     } catch (error) {
       console.error("Error merging tiles:", error);
-      return tiles; // Fallback to original tiles
+      return []; // Return empty array instead of tiles to avoid dependency
     }
-  }, [tileCollection, tiles]);
+  }, [tileCollection]);
 
   // Memoize the tilesX calculation
   const tilesX = useMemo(() => {
@@ -115,8 +116,19 @@ export default function TileDisplay({
 
   // Call the callback when enhanced tiles change
   useEffect(() => {
-    onEnhancedTilesChange?.(enhancedTiles);
-  }, [enhancedTiles, onEnhancedTilesChange]);
+    // Only call the callback if the enhanced tiles have actually changed
+    const prevTiles = prevEnhancedTilesRef.current;
+    const tilesChanged =
+      prevTiles.length !== enhancedTiles.length ||
+      prevTiles.some(
+        (prevTile, index) => prevTile.id !== enhancedTiles[index]?.id
+      );
+
+    if (onEnhancedTilesChange && tilesChanged) {
+      prevEnhancedTilesRef.current = enhancedTiles;
+      onEnhancedTilesChange(enhancedTiles);
+    }
+  }, [enhancedTiles]); // Remove onEnhancedTilesChange from dependencies to prevent infinite loop
 
   // Memoize the tiles grid to prevent unnecessary re-renders
   const tilesGrid = useMemo(

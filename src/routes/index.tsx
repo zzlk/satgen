@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import "../styles/ImageTileCutter.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
+import TileGrid from "../components/TileGrid";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
@@ -23,9 +24,11 @@ export default function () {
   const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [sleepTime, setSleepTime] = useState<number>(500);
-  const [partialResultImage, setPartialResultImage] = useState<string | null>(
-    null
-  );
+
+  const [currentSynthesisState, setCurrentSynthesisState] = useState<Array<
+    Set<string>
+  > | null>(null);
+  const [currentIteration, setCurrentIteration] = useState<number>(0);
   const [finalArrangement, setFinalArrangement] = useState<string[][] | null>(
     null
   );
@@ -120,7 +123,8 @@ export default function () {
 
     setIsSynthesizing(true);
     setSynthesizedImage(null);
-    setPartialResultImage(null);
+    setCurrentSynthesisState(null);
+    setCurrentIteration(0);
 
     try {
       const targetWidth = synthesizeWidth;
@@ -144,15 +148,10 @@ export default function () {
           break;
         }
 
-        // Render partial result from the current state
+        // Update state for the new TileGrid component
         const currentState = next.value;
-
-        await renderPartialResultFromState(
-          currentState,
-          targetWidth,
-          targetHeight,
-          iteration
-        );
+        setCurrentSynthesisState(currentState);
+        setCurrentIteration(iteration);
 
         await new Promise((resolve) => setTimeout(resolve, sleepTime));
 
@@ -186,171 +185,9 @@ export default function () {
       );
     } finally {
       setIsSynthesizing(false);
-      setPartialResultImage(null);
+      // Keep the final state visible
     }
   };
-
-  const renderPartialResultFromState = useCallback(
-    async (
-      state: Array<Set<string>>,
-      width: number,
-      height: number,
-      iteration: number
-    ) => {
-      if (!state || state.length === 0) return;
-
-      const targetWidth = synthesizeWidth * tileWidth;
-      const targetHeight = synthesizeHeight * tileHeight;
-
-      // Create canvas for the partial result
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) return;
-
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      ctx.clearRect(0, 0, targetWidth, targetHeight);
-
-      // Render the current state
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const cellIndex = y * width + x;
-          const cellPossibilities = state[cellIndex];
-          const targetX = x * tileWidth;
-          const targetY = y * tileHeight;
-
-          if (cellPossibilities.size === 0) {
-            // Empty cell - render red X on black background
-            const emptyCanvas = document.createElement("canvas");
-            const emptyCtx = emptyCanvas.getContext("2d");
-
-            if (emptyCtx) {
-              emptyCanvas.width = tileWidth;
-              emptyCanvas.height = tileHeight;
-
-              // Fill with black background
-              emptyCtx.fillStyle = "#000000";
-              emptyCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-              // Draw red X
-              emptyCtx.strokeStyle = "#FF0000";
-              emptyCtx.lineWidth = Math.max(
-                2,
-                Math.min(tileWidth, tileHeight) / 16
-              );
-              emptyCtx.beginPath();
-              emptyCtx.moveTo(tileWidth * 0.2, tileHeight * 0.2);
-              emptyCtx.lineTo(tileWidth * 0.8, tileHeight * 0.8);
-              emptyCtx.moveTo(tileWidth * 0.8, tileHeight * 0.2);
-              emptyCtx.lineTo(tileWidth * 0.2, tileHeight * 0.8);
-              emptyCtx.stroke();
-
-              ctx.drawImage(emptyCanvas, targetX, targetY);
-            }
-          } else if (cellPossibilities.size === 1) {
-            // Collapsed cell - render the single tile
-            const tileId = Array.from(cellPossibilities)[0];
-            const tile = enhancedTiles.find((t) => t.id === tileId);
-            if (tile) {
-              const tileCanvas = document.createElement("canvas");
-              const tileCtx = tileCanvas.getContext("2d");
-
-              if (tileCtx) {
-                const tileImg = new Image();
-
-                await new Promise<void>((resolve, reject) => {
-                  tileImg.onload = () => {
-                    tileCanvas.width = tileWidth;
-                    tileCanvas.height = tileHeight;
-                    tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
-                    ctx.drawImage(tileCanvas, targetX, targetY);
-                    resolve();
-                  };
-
-                  tileImg.onerror = () => {
-                    reject(new Error(`Failed to load tile image: ${tileId}`));
-                  };
-
-                  tileImg.src = tile.dataUrl;
-                });
-              }
-            }
-          } else {
-            // Uncertain cell - render based on number of possibilities
-            const tileCanvas = document.createElement("canvas");
-            const tileCtx = tileCanvas.getContext("2d");
-
-            if (tileCtx) {
-              tileCanvas.width = tileWidth;
-              tileCanvas.height = tileHeight;
-
-              // Create gradient based on number of possibilities
-              const maxPossibilities = enhancedTiles.length;
-              const possibilityRatio =
-                cellPossibilities.size / maxPossibilities;
-
-              // Color from purple (many possibilities) to blue (few possibilities)
-              const hue = 240 + possibilityRatio * 60; // 240 (blue) to 300 (purple)
-              const saturation = 70;
-              const lightness = 60 - possibilityRatio * 20; // 60 to 40
-
-              const gradient = tileCtx.createLinearGradient(
-                0,
-                0,
-                tileWidth,
-                tileHeight
-              );
-              gradient.addColorStop(
-                0,
-                `hsl(${hue}, ${saturation}%, ${lightness}%)`
-              );
-              gradient.addColorStop(
-                1,
-                `hsl(${hue}, ${saturation}%, ${lightness - 10}%)`
-              );
-
-              tileCtx.fillStyle = gradient;
-              tileCtx.fillRect(0, 0, tileWidth, tileHeight);
-
-              // Add possibility count
-              tileCtx.fillStyle = "#FFFFFF";
-              tileCtx.font = `bold ${
-                Math.min(tileWidth, tileHeight) / 4
-              }px Arial`;
-              tileCtx.textAlign = "center";
-              tileCtx.textBaseline = "middle";
-              tileCtx.fillText(
-                cellPossibilities.size.toString(),
-                tileWidth / 2,
-                tileHeight / 2
-              );
-
-              // Add border
-              tileCtx.strokeStyle = `hsl(${hue}, ${saturation}%, ${
-                lightness - 20
-              }%)`;
-              tileCtx.lineWidth = 2;
-              tileCtx.strokeRect(0, 0, tileWidth, tileHeight);
-
-              ctx.drawImage(tileCanvas, targetX, targetY);
-            }
-          }
-        }
-      }
-
-      // Add iteration number overlay
-      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-      ctx.fillRect(10, 10, 120, 30);
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "16px Arial";
-      ctx.fillText(`Iteration: ${iteration}`, 20, 30);
-
-      const dataUrl = canvas.toDataURL("image/png");
-      setPartialResultImage(dataUrl);
-    },
-    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight, enhancedTiles]
-  );
 
   const handleSynthesizedImageClick = useCallback(
     (event: React.MouseEvent<HTMLImageElement>) => {
@@ -676,19 +513,26 @@ export default function () {
                   </p>
                 </div>
 
-                {partialResultImage && (
+                {currentSynthesisState && (
                   <div className="partial-result">
                     <h5>Current State</h5>
-                    <div className="partial-image-container">
-                      <img
-                        src={partialResultImage}
-                        alt="Partial Result"
-                        style={{
-                          maxWidth: "100%",
-                          height: "auto",
-                          border: "1px solid #ccc",
-                          borderRadius: "4px",
-                        }}
+                    <div
+                      className="partial-image-container"
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        marginTop: "10px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <TileGrid
+                        state={currentSynthesisState}
+                        width={synthesizeWidth}
+                        height={synthesizeHeight}
+                        tileWidth={tileWidth}
+                        tileHeight={tileHeight}
+                        enhancedTiles={enhancedTiles}
+                        iteration={currentIteration}
                       />
                     </div>
                     <p className="partial-info">
