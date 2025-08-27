@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
 
@@ -7,11 +7,55 @@ interface TileDisplayProps {
   onEnhancedTilesChange?: (enhancedTiles: Tile[]) => void;
 }
 
+// Memoized individual tile component to prevent unnecessary re-renders
+const TileItem = memo(({ tile }: { tile: Tile }) => (
+  <div className="tile-item">
+    <img src={tile.dataUrl} alt={tile.getLabel()} className="tile-image" />
+    <p className="tile-label">{tile.getLabel()}</p>
+    <p className="tile-hash">Hash: {tile.getDataUrlHash()}</p>
+    <div className="tile-borders-detailed">
+      <div className="border-direction">
+        <span className="border-label">N:</span>
+        <span className="border-ids">
+          {tile.getBorderIds("north").length > 0
+            ? tile.getBorderIds("north").join(", ")
+            : "none"}
+        </span>
+      </div>
+      <div className="border-direction">
+        <span className="border-label">E:</span>
+        <span className="border-ids">
+          {tile.getBorderIds("east").length > 0
+            ? tile.getBorderIds("east").join(", ")
+            : "none"}
+        </span>
+      </div>
+      <div className="border-direction">
+        <span className="border-label">S:</span>
+        <span className="border-ids">
+          {tile.getBorderIds("south").length > 0
+            ? tile.getBorderIds("south").join(", ")
+            : "none"}
+        </span>
+      </div>
+      <div className="border-direction">
+        <span className="border-label">W:</span>
+        <span className="border-ids">
+          {tile.getBorderIds("west").length > 0
+            ? tile.getBorderIds("west").join(", ")
+            : "none"}
+        </span>
+      </div>
+    </div>
+  </div>
+));
+
+TileItem.displayName = "TileItem";
+
 export default function TileDisplay({
   tiles,
   onEnhancedTilesChange,
 }: TileDisplayProps) {
-  const [enhancedTiles, setEnhancedTiles] = useState<Tile[]>([]);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [borderEnhancementStats, setBorderEnhancementStats] = useState<{
     originalBorderCount: number;
@@ -19,73 +63,72 @@ export default function TileDisplay({
     addedBorders: number;
   } | null>(null);
 
-  useEffect(() => {
-    if (tiles.length === 0) {
-      setEnhancedTiles([]);
-      return;
-    }
+  // Memoize the tile collection creation to avoid recreating it on every render
+  const tileCollection = useMemo(() => {
+    if (tiles.length === 0) return null;
 
-    const enhanceTiles = async () => {
-      setIsEnhancing(true);
-
-      try {
-        // Create a TileCollection and merge duplicates
-        const tileCollection = TileCollection.fromTiles(
-          tiles,
-          tiles.length,
-          0, // imageWidth - not needed for display
-          0, // imageHeight - not needed for display
-          tiles.length > 0 ? Math.max(...tiles.map((t) => t.x)) + 1 : 0, // tilesX
-          tiles.length > 0 ? Math.max(...tiles.map((t) => t.y)) + 1 : 0 // tilesY
-        );
-
-        const mergedCollection = tileCollection.mergeDuplicateTiles();
-
-        // Calculate original border count
-        const originalBorderCount = mergedCollection.tiles.reduce(
-          (total: number, tile: Tile) => total + tile.getBorderCount(),
-          0
-        );
-
-        // Add compatible borders based on pixel content
-        // const enhancedCollection =
-        //   await mergedCollection.addCompatibleBorders();
-
-        // Calculate enhanced border count
-        // const enhancedBorderCount = enhancedCollection.tiles.reduce(
-        //   (total: number, tile: Tile) => total + tile.getBorderCount(),
-        //   0
-        // );
-
-        setEnhancedTiles(mergedCollection.tiles);
-        // setBorderEnhancementStats({
-        //   originalBorderCount,
-        //   enhancedBorderCount,
-        //   addedBorders: enhancedBorderCount - originalBorderCount,
-        // });
-        onEnhancedTilesChange?.(mergedCollection.tiles);
-      } catch (error) {
-        console.error("Error enhancing tiles:", error);
-        // Fallback to merged tiles without enhanced borders
-        const tileCollection = TileCollection.fromTiles(
-          tiles,
-          tiles.length,
-          0,
-          0,
-          tiles.length > 0 ? Math.max(...tiles.map((t) => t.x)) + 1 : 0,
-          tiles.length > 0 ? Math.max(...tiles.map((t) => t.y)) + 1 : 0
-        );
-        const mergedCollection = tileCollection.mergeDuplicateTiles();
-        setEnhancedTiles(mergedCollection.tiles);
-        setBorderEnhancementStats(null); // No enhancement stats in fallback
-        onEnhancedTilesChange?.(mergedCollection.tiles);
-      } finally {
-        setIsEnhancing(false);
-      }
-    };
-
-    enhanceTiles();
+    return TileCollection.fromTiles(
+      tiles,
+      tiles.length,
+      0, // imageWidth - not needed for display
+      0, // imageHeight - not needed for display
+      tiles.length > 0 ? Math.max(...tiles.map((t) => t.x)) + 1 : 0, // tilesX
+      tiles.length > 0 ? Math.max(...tiles.map((t) => t.y)) + 1 : 0 // tilesY
+    );
   }, [tiles]);
+
+  // Memoize the merged tiles to avoid recalculating on every render
+  const enhancedTiles = useMemo(() => {
+    if (!tileCollection) return [];
+
+    try {
+      const mergedCollection = tileCollection.mergeDuplicateTiles();
+      return mergedCollection.tiles;
+    } catch (error) {
+      console.error("Error merging tiles:", error);
+      return tiles; // Fallback to original tiles
+    }
+  }, [tileCollection, tiles]);
+
+  // Memoize the tilesX calculation
+  const tilesX = useMemo(() => {
+    return enhancedTiles.length > 0
+      ? Math.max(...enhancedTiles.map((t: Tile) => t.x)) + 1
+      : 0;
+  }, [enhancedTiles]);
+
+  // Memoize the border enhancement stats calculation
+  const currentBorderStats = useMemo(() => {
+    if (enhancedTiles.length === 0) return null;
+
+    const originalBorderCount = enhancedTiles.reduce(
+      (total: number, tile: Tile) => total + tile.getBorderCount(),
+      0
+    );
+
+    return {
+      originalBorderCount,
+      enhancedBorderCount: originalBorderCount, // Currently no enhancement
+      addedBorders: 0,
+    };
+  }, [enhancedTiles]);
+
+  // Call the callback when enhanced tiles change
+  useEffect(() => {
+    onEnhancedTilesChange?.(enhancedTiles);
+  }, [enhancedTiles, onEnhancedTilesChange]);
+
+  // Memoize the tiles grid to prevent unnecessary re-renders
+  const tilesGrid = useMemo(
+    () => (
+      <div className="tiles-grid">
+        {enhancedTiles.map((tile: Tile) => (
+          <TileItem key={tile.id} tile={tile} />
+        ))}
+      </div>
+    ),
+    [enhancedTiles]
+  );
 
   if (tiles.length === 0) {
     return null;
@@ -99,12 +142,6 @@ export default function TileDisplay({
       </div>
     );
   }
-
-  // Calculate tilesX for proper tile numbering
-  const tilesX =
-    enhancedTiles.length > 0
-      ? Math.max(...enhancedTiles.map((t: Tile) => t.x)) + 1
-      : 0;
 
   return (
     <div className="tiles-section">
@@ -126,53 +163,7 @@ export default function TileDisplay({
         </p>
       )}
 
-      <div className="tiles-grid">
-        {enhancedTiles.map((tile: Tile) => (
-          <div key={tile.id} className="tile-item">
-            <img
-              src={tile.dataUrl}
-              alt={tile.getLabel()}
-              className="tile-image"
-            />
-            <p className="tile-label">{tile.getLabel()}</p>
-            <p className="tile-hash">Hash: {tile.getDataUrlHash()}</p>
-            <div className="tile-borders-detailed">
-              <div className="border-direction">
-                <span className="border-label">N:</span>
-                <span className="border-ids">
-                  {tile.getBorderIds("north").length > 0
-                    ? tile.getBorderIds("north").join(", ")
-                    : "none"}
-                </span>
-              </div>
-              <div className="border-direction">
-                <span className="border-label">E:</span>
-                <span className="border-ids">
-                  {tile.getBorderIds("east").length > 0
-                    ? tile.getBorderIds("east").join(", ")
-                    : "none"}
-                </span>
-              </div>
-              <div className="border-direction">
-                <span className="border-label">S:</span>
-                <span className="border-ids">
-                  {tile.getBorderIds("south").length > 0
-                    ? tile.getBorderIds("south").join(", ")
-                    : "none"}
-                </span>
-              </div>
-              <div className="border-direction">
-                <span className="border-label">W:</span>
-                <span className="border-ids">
-                  {tile.getBorderIds("west").length > 0
-                    ? tile.getBorderIds("west").join(", ")
-                    : "none"}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {tilesGrid}
     </div>
   );
 }

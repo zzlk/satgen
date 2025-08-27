@@ -248,7 +248,7 @@ function* WaveFunctionGenerateInternal(
             continue;
           }
 
-          if (recursionDepth % 99999 === 0) {
+          if (recursionDepth % 1 === 0) {
             yield cells.map(
               (c) =>
                 new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
