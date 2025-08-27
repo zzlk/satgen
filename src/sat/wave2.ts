@@ -272,7 +272,7 @@ function* WaveFunctionGenerateInternal(
           if (ret !== null) {
             return ret;
           } else {
-            cells[y * width + x] = backup;
+            // cells[y * width + x] = backup;
           }
         }
     }
