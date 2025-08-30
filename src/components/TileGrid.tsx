@@ -181,12 +181,53 @@ const TileGrid: React.FC<TileGridProps> = ({
     // Clear the canvas
     ctx.clearRect(0, 0, totalWidth, totalHeight);
 
+    // Handle dimension mismatch by creating a compatible state
+    const expectedLength = width * height;
+    let compatibleState = state;
+
+    if (state.length !== expectedLength) {
+      console.warn(
+        `State array length (${state.length}) doesn't match expected dimensions (${expectedLength}). Creating compatible state.`
+      );
+
+      // Create a new state array with the expected dimensions
+      compatibleState = new Array(expectedLength);
+
+      // Calculate the old grid dimensions from the state length
+      const oldLength = state.length;
+      const oldWidth = Math.sqrt(oldLength);
+      const oldHeight = oldLength / oldWidth;
+
+      // Fill the new state array
+      for (let i = 0; i < expectedLength; i++) {
+        const newX = i % width;
+        const newY = Math.floor(i / width);
+
+        // Map new coordinates to old coordinates (with bounds checking)
+        const oldX = Math.floor((newX / width) * oldWidth);
+        const oldY = Math.floor((newY / height) * oldHeight);
+        const oldIndex = oldY * oldWidth + oldX;
+
+        if (oldIndex >= 0 && oldIndex < oldLength) {
+          compatibleState[i] = state[oldIndex];
+        } else {
+          // If out of bounds, create an empty set
+          compatibleState[i] = new Set();
+        }
+      }
+    }
+
     // Render each cell
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const cellIndex = y * width + x;
-        const cellPossibilities = state[cellIndex];
-        renderCell(ctx, x, y, cellPossibilities);
+        const cellPossibilities = compatibleState[cellIndex];
+
+        // Safety check: if the state array doesn't match the expected dimensions,
+        // don't render this cell to avoid errors
+        if (cellPossibilities && cellPossibilities.size !== undefined) {
+          renderCell(ctx, x, y, cellPossibilities);
+        }
       }
     }
   }, [state, width, height, totalWidth, totalHeight, renderCell]);

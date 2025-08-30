@@ -267,10 +267,7 @@ function* WaveFunctionGenerateInternalWithResetting(
   seed: number,
   cells: Array<Bitset>,
   cache: SupportCache
-): Generator<
-  { x: number; y: number; tile: string | null },
-  Array<string> | null
-> {
+): Generator<{ x: number; y: number; tile: string | null }> {
   let iteration = -1;
 
   while (true) {
@@ -279,7 +276,7 @@ function* WaveFunctionGenerateInternalWithResetting(
     const nextCells = findCells(width, height, cells);
 
     if (nextCells.length === 0) {
-      return cells.map((c) => inverseTileMap.get(c.getFirstSetBit()!)!);
+      return;
     }
 
     const { x, y } = nextCells[0];
@@ -347,14 +344,10 @@ function* WaveFunctionGenerateWithBacktracking(
   seed: number,
   cells: Array<Bitset>,
   cache: SupportCache
-): Generator<
-  { x: number; y: number; tile: string | null },
-  Array<string> | null
-> {
+): Generator<{ x: number; y: number; tile: string | null }> {
   // base case, entire cell array is collapsed.
   if (cells.every((c) => c.count() === 1)) {
-    // return cells.map((c) => c.keys().next().value!);
-    return cells.map((c) => inverseTileMap.get(c.getFirstSetBit()!)!);
+    return;
   }
 
   for (const { x, y } of findCells(width, height, cells)) {
@@ -487,10 +480,7 @@ export function* gen(
   width: number,
   height: number,
   seed: number
-): Generator<
-  { x: number; y: number; tile: string | null },
-  Array<string> | null
-> {
+): Generator<{ x: number; y: number; tile: string | null }> {
   // Create support cache instance
   const cache = new SupportCache();
 
@@ -600,6 +590,4 @@ export function* gen(
   }
 
   console.log("=============================================");
-
-  return result;
 }

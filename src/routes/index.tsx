@@ -3,6 +3,8 @@ import "../styles/ImageTileCutter.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
 import TileGrid from "../components/TileGrid";
+import SynthesisConfig from "../components/SynthesisConfig";
+import TileConfig from "../components/TileConfig";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
@@ -21,7 +23,6 @@ export default function () {
   const [synthesizeWidth, setSynthesizeWidth] = useState<number>(10);
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
   const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
-  const [synthesizedImage, setSynthesizedImage] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [sleepTime, setSleepTime] = useState<number>(500);
 
@@ -29,9 +30,12 @@ export default function () {
     Set<string>
   > | null>(null);
   const [currentIteration, setCurrentIteration] = useState<number>(0);
-  const [finalArrangement, setFinalArrangement] = useState<string[][] | null>(
-    null
-  );
+
+  // Clear synthesis state when dimensions change
+  const clearSynthesisState = useCallback(() => {
+    setCurrentSynthesisState(null);
+    setCurrentIteration(0);
+  }, []);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -122,7 +126,6 @@ export default function () {
     }
 
     setIsSynthesizing(true);
-    setSynthesizedImage(null);
     setCurrentSynthesisState(null);
     setCurrentIteration(0);
 
@@ -136,7 +139,6 @@ export default function () {
       // Use the gen function from wave2.ts
       const generator = gen(tileMap, targetWidth, targetHeight, synthesisSeed);
 
-      let result: string[] | null = null;
       let iteration = 0;
 
       // Initialize the synthesis state with all tiles as possibilities
@@ -151,7 +153,7 @@ export default function () {
         const next = generator.next();
 
         if (next.done) {
-          result = next.value;
+          // Generator completed successfully
           break;
         }
 
@@ -188,25 +190,6 @@ export default function () {
 
         iteration++;
       }
-
-      if (result) {
-        // Convert the 1D result array to 2D arrangement
-        const arrangement: string[][] = [];
-        for (let y = 0; y < targetHeight; y++) {
-          arrangement[y] = [];
-          for (let x = 0; x < targetWidth; x++) {
-            const index = y * targetWidth + x;
-            arrangement[y][x] = result[index];
-          }
-        }
-
-        // Render final result
-        const finalImage = await renderArrangementToImage(arrangement);
-        setSynthesizedImage(finalImage);
-        setFinalArrangement(arrangement);
-      } else {
-        alert("Failed to generate image. No valid arrangement found.");
-      }
     } catch (error) {
       console.error("Error synthesizing image:", error);
       alert(
@@ -220,126 +203,6 @@ export default function () {
     }
   };
 
-  const handleSynthesizedImageClick = useCallback(
-    (event: React.MouseEvent<HTMLImageElement>) => {
-      if (!finalArrangement || !synthesizedImage) return;
-
-      const imgElement = event.currentTarget;
-      const rect = imgElement.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      // Get the actual displayed image dimensions
-      const displayedWidth = imgElement.offsetWidth;
-      const displayedHeight = imgElement.offsetHeight;
-
-      // Check if click is within the displayed image bounds
-      if (x < 0 || x >= displayedWidth || y < 0 || y >= displayedHeight) {
-        return; // Click is outside the image
-      }
-
-      // Calculate scale factors
-      const scaleX = displayedWidth / (synthesizeWidth * tileWidth);
-      const scaleY = displayedHeight / (synthesizeHeight * tileHeight);
-
-      // Convert click coordinates to original image coordinates
-      const originalX = x / scaleX;
-      const originalY = y / scaleY;
-
-      // Calculate which tile was clicked
-      const tileX = Math.floor(originalX / tileWidth);
-      const tileY = Math.floor(originalY / tileHeight);
-
-      // Double-check bounds in tile coordinates
-      if (
-        tileX >= 0 &&
-        tileX < synthesizeWidth &&
-        tileY >= 0 &&
-        tileY < synthesizeHeight
-      ) {
-        const tileId = finalArrangement[tileY][tileX];
-        if (tileId) {
-          console.log(
-            `Clicked tile ID: ${tileId} at position (${tileX}, ${tileY})`
-          );
-        } else {
-          console.log(`Clicked empty position at (${tileX}, ${tileY})`);
-        }
-      }
-    },
-    [
-      finalArrangement,
-      synthesizedImage,
-      tileWidth,
-      tileHeight,
-      synthesizeWidth,
-      synthesizeHeight,
-    ]
-  );
-
-  const renderArrangementToImage = useCallback(
-    async (arrangement: string[][]): Promise<string> => {
-      if (!arrangement || arrangement.length === 0) {
-        throw new Error("No arrangement to render");
-      }
-
-      const targetWidth = synthesizeWidth * tileWidth;
-      const targetHeight = synthesizeHeight * tileHeight;
-
-      // Create canvas for the final result
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) {
-        throw new Error("Failed to get canvas context");
-      }
-
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      ctx.clearRect(0, 0, targetWidth, targetHeight);
-
-      // Render the arrangement
-      for (let gridY = 0; gridY < arrangement.length; gridY++) {
-        for (let gridX = 0; gridX < arrangement[gridY].length; gridX++) {
-          const tileId = arrangement[gridY][gridX];
-          const targetX = gridX * tileWidth;
-          const targetY = gridY * tileHeight;
-
-          if (tileId) {
-            const tile = enhancedTiles.find((t) => t.id === tileId);
-            if (tile) {
-              const tileCanvas = document.createElement("canvas");
-              const tileCtx = tileCanvas.getContext("2d");
-
-              if (tileCtx) {
-                const tileImg = new Image();
-
-                await new Promise<void>((resolve, reject) => {
-                  tileImg.onload = () => {
-                    tileCanvas.width = tileWidth;
-                    tileCanvas.height = tileHeight;
-                    tileCtx.drawImage(tileImg, 0, 0, tileWidth, tileHeight);
-                    ctx.drawImage(tileCanvas, targetX, targetY);
-                    resolve();
-                  };
-
-                  tileImg.onerror = () => {
-                    reject(new Error(`Failed to load tile image: ${tileId}`));
-                  };
-
-                  tileImg.src = tile.dataUrl;
-                });
-              }
-            }
-          }
-        }
-      }
-
-      return canvas.toDataURL("image/png");
-    },
-    [synthesizeWidth, synthesizeHeight, tileWidth, tileHeight, enhancedTiles]
-  );
-
   return (
     <div className="image-tile-cutter-container">
       <h1 className="image-tile-cutter-title">Image Tile Cutter</h1>
@@ -352,55 +215,14 @@ export default function () {
       />
 
       {selectedFile && (
-        <>
-          <div className="success-message">
-            <h4 className="success-title">File Selected Successfully! ✅</h4>
-            <p className="success-text">
-              Your image is ready for processing. Configure tile dimensions
-              below.
-            </p>
-          </div>
-
-          <div className="tile-config">
-            <h3 className="tile-config-title">Tile Configuration</h3>
-
-            <div className="tile-inputs">
-              <div className="input-group">
-                <label className="input-label">Tile Width (px)</label>
-                <input
-                  type="number"
-                  value={tileWidth}
-                  onChange={(e) =>
-                    setTileWidth(Math.max(1, parseInt(e.target.value) || 1))
-                  }
-                  min="1"
-                  className="dimension-input"
-                />
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Tile Height (px)</label>
-                <input
-                  type="number"
-                  value={tileHeight}
-                  onChange={(e) =>
-                    setTileHeight(Math.max(1, parseInt(e.target.value) || 1))
-                  }
-                  min="1"
-                  className="dimension-input"
-                />
-              </div>
-
-              <button
-                onClick={cutImageIntoTiles}
-                disabled={isProcessing}
-                className="cut-button"
-              >
-                {isProcessing ? "Processing..." : "Cut Image into Tiles"}
-              </button>
-            </div>
-          </div>
-        </>
+        <TileConfig
+          tileWidth={tileWidth}
+          setTileWidth={setTileWidth}
+          tileHeight={tileHeight}
+          setTileHeight={setTileHeight}
+          isProcessing={isProcessing}
+          onCutImage={cutImageIntoTiles}
+        />
       )}
 
       <TileDisplay
@@ -409,129 +231,26 @@ export default function () {
       />
 
       {tileCollection && (
-        <div className="synthesis-section">
-          <h3 className="synthesis-title">Image Synthesis</h3>
-          <p className="synthesis-description">
-            Create a new image using the Wave Function Collapse algorithm. The
-            generation is deterministic - using the same seed will always
-            produce the same result. Enter dimensions in tile units.
-          </p>
-
-          <div className="synthesis-inputs">
-            <div className="input-group">
-              <label className="input-label">Width (tiles)</label>
-              <input
-                type="number"
-                value={synthesizeWidth}
-                onChange={(e) =>
-                  setSynthesizeWidth(Math.max(1, parseInt(e.target.value) || 1))
-                }
-                min="1"
-                className="dimension-input"
-              />
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">Height (tiles)</label>
-              <input
-                type="number"
-                value={synthesizeHeight}
-                onChange={(e) =>
-                  setSynthesizeHeight(
-                    Math.max(1, parseInt(e.target.value) || 1)
-                  )
-                }
-                min="1"
-                className="dimension-input"
-              />
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">Seed</label>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <input
-                  type="number"
-                  value={synthesisSeed}
-                  onChange={(e) =>
-                    setSynthesisSeed(parseInt(e.target.value) || 0)
-                  }
-                  className="dimension-input"
-                  title="Seed for deterministic generation. Same seed produces same result."
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSynthesisSeed(Math.floor(Math.random() * 10000))
-                  }
-                  style={{
-                    padding: "8px 12px",
-                    background: "#f0f0f0",
-                    border: "1px solid #ccc",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                  }}
-                  title="Generate random seed"
-                >
-                  🎲
-                </button>
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">
-                Animation Speed: {sleepTime}ms
-              </label>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <input
-                  type="range"
-                  min="0"
-                  max="2000"
-                  step="50"
-                  value={sleepTime}
-                  onChange={(e) => setSleepTime(parseInt(e.target.value))}
-                  className="speed-slider"
-                  title="Adjust animation speed during synthesis"
-                />
-                <span
-                  style={{ fontSize: "12px", color: "#666", minWidth: "40px" }}
-                >
-                  {sleepTime}ms
-                </span>
-              </div>
-              <div
-                style={{ fontSize: "11px", color: "#888", marginTop: "4px" }}
-              >
-                {sleepTime === 0
-                  ? "No delay (fastest)"
-                  : sleepTime <= 100
-                  ? "Very fast"
-                  : sleepTime <= 300
-                  ? "Fast"
-                  : sleepTime <= 700
-                  ? "Normal"
-                  : sleepTime <= 1000
-                  ? "Slow"
-                  : "Very slow"}
-              </div>
-            </div>
-
-            <button
-              onClick={handleSynthesize}
-              disabled={isSynthesizing}
-              className="synthesize-button"
-            >
-              {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
-            </button>
-          </div>
+        <>
+          <SynthesisConfig
+            synthesizeWidth={synthesizeWidth}
+            setSynthesizeWidth={setSynthesizeWidth}
+            synthesizeHeight={synthesizeHeight}
+            setSynthesizeHeight={setSynthesizeHeight}
+            synthesisSeed={synthesisSeed}
+            setSynthesisSeed={setSynthesisSeed}
+            sleepTime={sleepTime}
+            setSleepTime={setSleepTime}
+            isSynthesizing={isSynthesizing}
+            onSynthesize={handleSynthesize}
+            onClearState={clearSynthesisState}
+          />
 
           {/* Progress Display */}
           <div
             className="synthesis-progress"
             style={{
-              minHeight: isSynthesizing ? "400px" : "auto",
+              minHeight: currentSynthesisState ? "400px" : "auto",
               transition: "min-height 0.3s ease-in-out",
             }}
           >
@@ -543,81 +262,48 @@ export default function () {
                     Generating image using Wave Function Collapse algorithm...
                   </p>
                 </div>
-
-                {currentSynthesisState && (
-                  <div className="partial-result">
-                    <h5>Current State</h5>
-                    <div
-                      className="partial-image-container"
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        marginTop: "10px",
-                        marginBottom: "10px",
-                      }}
-                    >
-                      <TileGrid
-                        state={currentSynthesisState}
-                        width={synthesizeWidth}
-                        height={synthesizeHeight}
-                        tileWidth={tileWidth}
-                        tileHeight={tileHeight}
-                        enhancedTiles={enhancedTiles}
-                        iteration={currentIteration}
-                      />
-                    </div>
-                    <p className="partial-info">
-                      <strong>Legend:</strong>
-                      <br />•{" "}
-                      <span style={{ color: "#8B5CF6" }}>
-                        Purple/Blue tiles
-                      </span>
-                      : Uncertain cells with multiple possibilities
-                      <br />•{" "}
-                      <span style={{ color: "#000000" }}>
-                        Black tiles with red X
-                      </span>
-                      : Contradictions (no valid tiles)
-                      <br />•{" "}
-                      <span style={{ color: "#000000" }}>Normal tiles</span>:
-                      Collapsed cells with single tile
-                    </p>
-                  </div>
-                )}
               </>
             )}
-          </div>
 
-          {synthesizedImage && (
-            <div className="synthesized-result">
-              <h4 className="result-title">Synthesized Image</h4>
-              <p className="result-info">
-                Size: {synthesizeWidth * tileWidth} ×{" "}
-                {synthesizeHeight * tileHeight} pixels
-              </p>
-              <div className="synthesized-image-container">
-                <img
-                  src={synthesizedImage}
-                  alt="Synthesized Image"
-                  className="synthesized-image"
-                  onClick={handleSynthesizedImageClick}
-                  style={{ cursor: "pointer" }}
-                />
+            {currentSynthesisState && (
+              <div className="partial-result">
+                <h5>{isSynthesizing ? "Current State" : "Final Result"}</h5>
+                <div
+                  className="partial-image-container"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    marginTop: "10px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <TileGrid
+                    state={currentSynthesisState}
+                    width={synthesizeWidth}
+                    height={synthesizeHeight}
+                    tileWidth={tileWidth}
+                    tileHeight={tileHeight}
+                    enhancedTiles={enhancedTiles}
+                    iteration={currentIteration}
+                  />
+                </div>
+                <p className="partial-info">
+                  <strong>Legend:</strong>
+                  <br />•{" "}
+                  <span style={{ color: "#8B5CF6" }}>Purple/Blue tiles</span>
+                  : Uncertain cells with multiple possibilities
+                  <br />•{" "}
+                  <span style={{ color: "#000000" }}>
+                    Black tiles with red X
+                  </span>
+                  : Contradictions (no valid tiles)
+                  <br />• <span style={{ color: "#000000" }}>Normal tiles</span>
+                  : Collapsed cells with single tile
+                </p>
               </div>
-              <button
-                onClick={() => {
-                  const link = document.createElement("a");
-                  link.download = "synthesized-image.png";
-                  link.href = synthesizedImage;
-                  link.click();
-                }}
-                className="download-button"
-              >
-                Download Image
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
