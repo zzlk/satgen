@@ -14,8 +14,7 @@
 }
 
 .rightPanel {
-  width: 500px;
-  min-width: 500px;
+  width: 800px;
   background-color: #f8f9fa;
   border-left: 1px solid #e0e0e0;
   display: flex;
