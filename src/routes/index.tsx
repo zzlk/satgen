@@ -9,6 +9,11 @@ import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
 import { gen } from "../sat/wave2";
+import {
+  convertTilesToWave2Format,
+  createInitialSynthesisState,
+  updateSynthesisState,
+} from "../utils/tileUtils";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -74,51 +79,6 @@ export default function () {
     }
   };
 
-  // Convert tiles to the format expected by the wave2.ts gen function
-  const convertTilesToWave2Format = useCallback((tiles: Tile[]) => {
-    const tileMap = new Map<
-      string,
-      [Set<string>, Set<string>, Set<string>, Set<string>]
-    >();
-
-    // Initialize all tiles with empty connection sets
-    for (const tile of tiles) {
-      tileMap.set(tile.id, [
-        new Set<string>(), // north connections
-        new Set<string>(), // east connections
-        new Set<string>(), // south connections
-        new Set<string>(), // west connections
-      ]);
-    }
-
-    // Populate connections based on tile borders
-    for (const tile of tiles) {
-      const connections = tileMap.get(tile.id)!;
-
-      // North connections (tile's north border can connect to other tiles' south border)
-      for (const northTileId of tile.borders.north) {
-        connections[2].add(northTileId);
-      }
-
-      // East connections (tile's east border can connect to other tiles' west border)
-      for (const eastTileId of tile.borders.east) {
-        connections[1].add(eastTileId);
-      }
-
-      // South connections (tile's south border can connect to other tiles' north border)
-      for (const southTileId of tile.borders.south) {
-        connections[0].add(southTileId);
-      }
-
-      // West connections (tile's west border can connect to other tiles' east border)
-      for (const westTileId of tile.borders.west) {
-        connections[3].add(westTileId);
-      }
-    }
-
-    return tileMap;
-  }, []);
-
   const handleSynthesize = async () => {
     if (enhancedTiles.length === 0) {
       alert("Please process an image into tiles first.");
@@ -142,10 +102,11 @@ export default function () {
       let iteration = 0;
 
       // Initialize the synthesis state with all tiles as possibilities
-      const initialState: Array<Set<string>> = [];
-      for (let i = 0; i < targetWidth * targetHeight; i++) {
-        initialState.push(new Set(enhancedTiles.map((tile) => tile.id)));
-      }
+      const initialState = createInitialSynthesisState(
+        targetWidth,
+        targetHeight,
+        enhancedTiles
+      );
       setCurrentSynthesisState(initialState);
 
       // Process the generator
@@ -165,22 +126,14 @@ export default function () {
         };
 
         // Update the current state based on the tile update
-        setCurrentSynthesisState((prevState) => {
-          if (!prevState) return prevState;
-
-          const newState = [...prevState];
-          const index = tileUpdate.y * targetWidth + tileUpdate.x;
-
-          if (tileUpdate.tile === null) {
-            // Reset to all possibilities
-            newState[index] = new Set(enhancedTiles.map((tile) => tile.id));
-          } else {
-            // Set to specific tile
-            newState[index] = new Set([tileUpdate.tile]);
-          }
-
-          return newState;
-        });
+        setCurrentSynthesisState((prevState) =>
+          updateSynthesisState(
+            prevState,
+            tileUpdate,
+            targetWidth,
+            enhancedTiles
+          )
+        );
 
         setCurrentIteration(iteration);
 
