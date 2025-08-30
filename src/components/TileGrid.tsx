@@ -35,9 +35,9 @@ const TileGrid = ({
 
   const maxPossibilities = enhancedTiles.length;
 
-  // Calculate the maximum available width (accounting for some padding)
-  const maxAvailableWidth = Math.min(window.innerWidth - 40, 1200); // Leave some margin
-  const maxAvailableHeight = Math.min(window.innerHeight - 200, 800); // Leave space for UI elements
+  // Calculate the maximum available width for the right panel (accounting for padding)
+  const maxAvailableWidth = 460; // 500px panel width - 40px padding
+  const maxAvailableHeight = Math.min(window.innerHeight - 200, 600); // Leave space for UI elements
 
   // Calculate the scale factor to fit the grid within available space
   const scaleX = maxAvailableWidth / (width * tileWidth);

@@ -35,12 +35,18 @@ export default function () {
     Set<string>
   > | null>(null);
   const [currentIteration, setCurrentIteration] = useState<number>(0);
+  const [currentSynthesisWidth, setCurrentSynthesisWidth] =
+    useState<number>(synthesizeWidth);
+  const [currentSynthesisHeight, setCurrentSynthesisHeight] =
+    useState<number>(synthesizeHeight);
 
   // Clear synthesis state when dimensions change
   const clearSynthesisState = useCallback(() => {
     setCurrentSynthesisState(null);
     setCurrentIteration(0);
-  }, []);
+    setCurrentSynthesisWidth(synthesizeWidth);
+    setCurrentSynthesisHeight(synthesizeHeight);
+  }, [synthesizeWidth, synthesizeHeight]);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -79,19 +85,28 @@ export default function () {
     }
   };
 
-  const handleSynthesize = async () => {
+  const handleSynthesize = async (
+    targetWidth?: number,
+    targetHeight?: number
+  ) => {
     if (enhancedTiles.length === 0) {
       alert("Please process an image into tiles first.");
       return;
     }
 
+    // Use provided dimensions or fall back to current state
+    const finalWidth = targetWidth ?? synthesizeWidth;
+    const finalHeight = targetHeight ?? synthesizeHeight;
+
     setIsSynthesizing(true);
     setCurrentSynthesisState(null);
     setCurrentIteration(0);
+    setCurrentSynthesisWidth(finalWidth);
+    setCurrentSynthesisHeight(finalHeight);
 
     try {
-      const targetWidth = synthesizeWidth;
-      const targetHeight = synthesizeHeight;
+      const targetWidth = finalWidth;
+      const targetHeight = finalHeight;
 
       // Convert tiles to wave2 format
       const tileMap = convertTilesToWave2Format(enhancedTiles);
@@ -157,98 +172,114 @@ export default function () {
   };
 
   return (
-    <div className={styles.imageTileCutterContainer}>
-      <h1 className={styles.imageTileCutterTitle}>Image Tile Cutter</h1>
+    <div className={styles.mainContainer}>
+      <div className={styles.leftPanel}>
+        <div className={styles.imageTileCutterContainer}>
+          <h1 className={styles.imageTileCutterTitle}>Image Tile Cutter</h1>
 
-      <FilePicker
-        onFileSelect={handleFileSelect}
-        onFileRemove={handleFileRemove}
-        selectedFile={selectedFile}
-        previewUrl={previewUrl}
-      />
-
-      {selectedFile && (
-        <TileConfig
-          tileWidth={tileWidth}
-          setTileWidth={setTileWidth}
-          tileHeight={tileHeight}
-          setTileHeight={setTileHeight}
-          isProcessing={isProcessing}
-          onCutImage={cutImageIntoTiles}
-        />
-      )}
-
-      <TileDisplay
-        tiles={tileCollection?.tiles || []}
-        onEnhancedTilesChange={setEnhancedTiles}
-      />
-
-      {tileCollection && (
-        <>
-          <SynthesisConfig
-            synthesizeWidth={synthesizeWidth}
-            setSynthesizeWidth={setSynthesizeWidth}
-            synthesizeHeight={synthesizeHeight}
-            setSynthesizeHeight={setSynthesizeHeight}
-            synthesisSeed={synthesisSeed}
-            setSynthesisSeed={setSynthesisSeed}
-            sleepTime={sleepTime}
-            setSleepTime={setSleepTime}
-            isSynthesizing={isSynthesizing}
-            onSynthesize={handleSynthesize}
-            onClearState={clearSynthesisState}
+          <FilePicker
+            onFileSelect={handleFileSelect}
+            onFileRemove={handleFileRemove}
+            selectedFile={selectedFile}
+            previewUrl={previewUrl}
           />
 
-          {/* Progress Display */}
-          <div
-            className={styles.synthesisProgress}
-            style={{
-              minHeight: currentSynthesisState ? "400px" : "auto",
-            }}
-          >
-            {isSynthesizing && (
-              <>
-                <h4 className={styles.progressTitle}>Synthesis Progress</h4>
-                <div className={styles.progressInfo}>
-                  <p>
-                    Generating image using Wave Function Collapse algorithm...
-                  </p>
-                </div>
-              </>
-            )}
+          {selectedFile && (
+            <TileConfig
+              tileWidth={tileWidth}
+              setTileWidth={setTileWidth}
+              tileHeight={tileHeight}
+              setTileHeight={setTileHeight}
+              isProcessing={isProcessing}
+              onCutImage={cutImageIntoTiles}
+            />
+          )}
 
-            {currentSynthesisState && (
-              <div className={styles.partialResult}>
-                <h5>{isSynthesizing ? "Current State" : "Final Result"}</h5>
-                <div className={styles.partialImageContainer}>
-                  <TileGrid
-                    state={currentSynthesisState}
-                    width={synthesizeWidth}
-                    height={synthesizeHeight}
-                    tileWidth={tileWidth}
-                    tileHeight={tileHeight}
-                    enhancedTiles={enhancedTiles}
-                    iteration={currentIteration}
-                  />
-                </div>
-                <p className={styles.partialInfo}>
-                  <strong>Legend:</strong>
-                  <br />•{" "}
-                  <span style={{ color: "#8B5CF6" }}>Purple/Blue tiles</span>
-                  : Uncertain cells with multiple possibilities
-                  <br />•{" "}
-                  <span style={{ color: "#000000" }}>
-                    Black tiles with red X
-                  </span>
-                  : Contradictions (no valid tiles)
-                  <br />• <span style={{ color: "#000000" }}>Normal tiles</span>
-                  : Collapsed cells with single tile
-                </p>
+          <TileDisplay
+            tiles={tileCollection?.tiles || []}
+            onEnhancedTilesChange={setEnhancedTiles}
+          />
+
+          {tileCollection && (
+            <>
+              <SynthesisConfig
+                synthesizeWidth={synthesizeWidth}
+                setSynthesizeWidth={setSynthesizeWidth}
+                synthesizeHeight={synthesizeHeight}
+                setSynthesizeHeight={setSynthesizeHeight}
+                synthesisSeed={synthesisSeed}
+                setSynthesisSeed={setSynthesisSeed}
+                sleepTime={sleepTime}
+                setSleepTime={setSleepTime}
+                isSynthesizing={isSynthesizing}
+                onSynthesize={handleSynthesize}
+                onClearState={clearSynthesisState}
+              />
+
+              {/* Progress Display */}
+              <div className={styles.synthesisProgress}>
+                {isSynthesizing && (
+                  <>
+                    <h4 className={styles.progressTitle}>Synthesis Progress</h4>
+                    <div className={styles.progressInfo}>
+                      <p>
+                        Generating image using Wave Function Collapse
+                        algorithm...
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {currentSynthesisState && (
+                  <div className={styles.partialResult}>
+                    <h5>{isSynthesizing ? "Current State" : "Final Result"}</h5>
+                    <p className={styles.partialInfo}>
+                      <strong>Legend:</strong>
+                      <br />•{" "}
+                      <span style={{ color: "#8B5CF6" }}>
+                        Purple/Blue tiles
+                      </span>
+                      : Uncertain cells with multiple possibilities
+                      <br />•{" "}
+                      <span style={{ color: "#000000" }}>
+                        Black tiles with red X
+                      </span>
+                      : Contradictions (no valid tiles)
+                      <br />•{" "}
+                      <span style={{ color: "#000000" }}>Normal tiles</span>:
+                      Collapsed cells with single tile
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </>
-      )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className={styles.rightPanel}>
+        <div className={styles.canvasContainer}>
+          <h3 className={styles.canvasTitle}>
+            {currentSynthesisState ? "Synthesis Canvas" : "Ready for Synthesis"}
+          </h3>
+          {currentSynthesisState ? (
+            <TileGrid
+              state={currentSynthesisState}
+              width={currentSynthesisWidth}
+              height={currentSynthesisHeight}
+              tileWidth={tileWidth}
+              tileHeight={tileHeight}
+              enhancedTiles={enhancedTiles}
+              iteration={currentIteration}
+            />
+          ) : (
+            <div className={styles.emptyCanvas}>
+              <p>No synthesis in progress</p>
+              <p>Process an image and start synthesis to see results here</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

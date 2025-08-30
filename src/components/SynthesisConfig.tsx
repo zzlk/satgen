@@ -11,7 +11,7 @@ interface SynthesisConfigProps {
   sleepTime: number;
   setSleepTime: (time: number) => void;
   isSynthesizing: boolean;
-  onSynthesize: () => void;
+  onSynthesize: (targetWidth?: number, targetHeight?: number) => void;
   onClearState: () => void;
 }
 
@@ -38,11 +38,11 @@ export default function SynthesisConfig({
     setLocalHeight(synthesizeHeight);
   }, [synthesizeWidth, synthesizeHeight]);
 
-  // Handle synthesis start - update parent state with local values
+  // Handle synthesis start - pass local values directly to synthesis function
   const handleSynthesize = () => {
     setSynthesizeWidth(localWidth);
     setSynthesizeHeight(localHeight);
-    onSynthesize();
+    onSynthesize(localWidth, localHeight);
   };
 
   // Clear state when dimensions change
