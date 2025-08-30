@@ -2,18 +2,13 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import styles from "./index.module.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
-import TileGrid from "../components/TileGrid";
 import SynthesisConfig from "../components/SynthesisConfig";
 import TileConfig from "../components/TileConfig";
 import { processImageIntoTiles } from "../utils/imageProcessor";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
 import { gen } from "../sat/wave2";
-import {
-  convertTilesToWave2Format,
-  createInitialSynthesisState,
-  updateSynthesisState,
-} from "../utils/tileUtils";
+import { convertTilesToWave2Format } from "../utils/tileUtils";
 
 export default function () {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -31,26 +26,11 @@ export default function () {
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [sleepTime, setSleepTime] = useState<number>(500);
 
-  const [currentSynthesisState, setCurrentSynthesisState] = useState<Array<
-    Set<string>
-  > | null>(null);
-  const [currentIteration, setCurrentIteration] = useState<number>(0);
-  const [currentSynthesisWidth, setCurrentSynthesisWidth] =
-    useState<number>(synthesizeWidth);
-  const [currentSynthesisHeight, setCurrentSynthesisHeight] =
-    useState<number>(synthesizeHeight);
-
   // Canvas-based approach
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Clear synthesis state when dimensions change
-  const clearSynthesisState = useCallback(() => {
-    setCurrentSynthesisState(null);
-    setCurrentIteration(0);
-    setCurrentSynthesisWidth(synthesizeWidth);
-    setCurrentSynthesisHeight(synthesizeHeight);
-
-    // Clear canvas
+  // Clear canvas
+  const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
@@ -58,7 +38,7 @@ export default function () {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-  }, [synthesizeWidth, synthesizeHeight]);
+  }, []);
 
   // Function to draw tiles to canvas
   const drawTileToCanvas = useCallback(
@@ -161,10 +141,6 @@ export default function () {
     const finalHeight = targetHeight ?? synthesizeHeight;
 
     setIsSynthesizing(true);
-    setCurrentSynthesisState(null);
-    setCurrentIteration(0);
-    setCurrentSynthesisWidth(finalWidth);
-    setCurrentSynthesisHeight(finalHeight);
 
     // Initialize canvas for the new synthesis
     initializeCanvas(finalWidth, finalHeight);
@@ -180,14 +156,6 @@ export default function () {
       const generator = gen(tileMap, targetWidth, targetHeight, synthesisSeed);
 
       let iteration = 0;
-
-      // Initialize the synthesis state with all tiles as possibilities
-      const initialState = createInitialSynthesisState(
-        targetWidth,
-        targetHeight,
-        enhancedTiles
-      );
-      setCurrentSynthesisState(initialState);
 
       // Process the generator
       while (true) {
@@ -205,20 +173,8 @@ export default function () {
           tile: string | null;
         };
 
-        // Update the current state based on the tile update
-        setCurrentSynthesisState((prevState) =>
-          updateSynthesisState(
-            prevState,
-            tileUpdate,
-            targetWidth,
-            enhancedTiles
-          )
-        );
-
         // Update canvas with the new tile
         drawTileToCanvas(tileUpdate.x, tileUpdate.y, tileUpdate.tile);
-
-        setCurrentIteration(iteration);
 
         if (iteration % 300 === 0) {
           await new Promise((resolve) => setTimeout(resolve, sleepTime));
@@ -235,7 +191,6 @@ export default function () {
       );
     } finally {
       setIsSynthesizing(false);
-      // Keep the final state visible
     }
   };
 
@@ -281,7 +236,7 @@ export default function () {
                 setSleepTime={setSleepTime}
                 isSynthesizing={isSynthesizing}
                 onSynthesize={handleSynthesize}
-                onClearState={clearSynthesisState}
+                onClearState={clearCanvas}
               />
 
               {/* Progress Display */}
@@ -297,28 +252,6 @@ export default function () {
                     </div>
                   </>
                 )}
-
-                {currentSynthesisState && (
-                  <div className={styles.partialResult}>
-                    <h5>{isSynthesizing ? "Current State" : "Final Result"}</h5>
-                    <p className={styles.partialInfo}>
-                      <strong>Legend:</strong>
-                      <br />•{" "}
-                      <span style={{ color: "#8B5CF6" }}>
-                        Purple/Blue tiles
-                      </span>
-                      : Uncertain cells with multiple possibilities
-                      <br />•{" "}
-                      <span style={{ color: "#000000" }}>
-                        Black tiles with red X
-                      </span>
-                      : Contradictions (no valid tiles)
-                      <br />•{" "}
-                      <span style={{ color: "#000000" }}>Normal tiles</span>:
-                      Collapsed cells with single tile
-                    </p>
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -328,30 +261,7 @@ export default function () {
       <div className={styles.rightPanel}>
         <div className={styles.canvasContainer}>
           <h3 className={styles.canvasTitle}>
-            {currentSynthesisState ? "Synthesis Canvas" : "Ready for Synthesis"}
-          </h3>
-          {currentSynthesisState ? (
-            <TileGrid
-              state={currentSynthesisState}
-              width={currentSynthesisWidth}
-              height={currentSynthesisHeight}
-              tileWidth={tileWidth}
-              tileHeight={tileHeight}
-              enhancedTiles={enhancedTiles}
-              iteration={currentIteration}
-            />
-          ) : (
-            <div className={styles.emptyCanvas}>
-              <p>No synthesis in progress</p>
-              <p>Process an image and start synthesis to see results here</p>
-            </div>
-          )}
-        </div>
-
-        {/* Canvas-based approach */}
-        <div className={styles.canvasContainer}>
-          <h3 className={styles.canvasTitle}>
-            {currentSynthesisState ? "Canvas Synthesis" : "Canvas Ready"}
+            {isSynthesizing ? "Synthesis in Progress" : "Ready for Synthesis"}
           </h3>
           <canvas
             ref={canvasRef}
@@ -361,10 +271,10 @@ export default function () {
               height: "auto",
             }}
           />
-          {!currentSynthesisState && (
+          {!isSynthesizing && (
             <div className={styles.emptyCanvas}>
               <p>Canvas ready for synthesis</p>
-              <p>Start synthesis to see canvas updates</p>
+              <p>Process an image and start synthesis to see results here</p>
             </div>
           )}
         </div>
