@@ -169,6 +169,8 @@ function* propagateRemoval(
           yield { x, y, tile: null };
         }
 
+        console.log("unsatisfiable at", x, y);
+
         return false; // unsatisfiable
 
       case 1:
@@ -216,10 +218,12 @@ function* resetCells(
       const nx = x + dx;
       const ny = y + dy;
 
-      if (nx >= 0 && nx < bitsetSize && ny >= 0 && ny < bitsetSize) {
-        cells[ny * bitsetSize + nx] = Bitset.createFull(bitsetSize);
-        yield { x: nx, y: ny, tile: null };
+      if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
+        continue;
       }
+
+      cells[ny * cellsWidth + nx] = Bitset.createFull(bitsetSize);
+      yield { x: nx, y: ny, tile: null };
     }
   }
 
@@ -228,22 +232,25 @@ function* resetCells(
     for (let dx = -radius - 1; dx <= radius + 1; dx++) {
       const nx = x + dx;
       const ny = y + dy;
-      if (nx >= 0 && nx < cellsWidth && ny >= 0 && ny < cellsHeight) {
-        if (
-          !(yield* propagateRemoval(
-            tiles,
-            inverseTileMap,
-            bitsetSize,
-            cellsWidth,
-            cellsHeight,
-            cells,
-            nx,
-            ny,
-            cache
-          ))
-        ) {
-          throw "what..?";
-        }
+
+      if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
+        continue;
+      }
+
+      if (
+        !(yield* propagateRemoval(
+          tiles,
+          inverseTileMap,
+          bitsetSize,
+          cellsWidth,
+          cellsHeight,
+          cells,
+          nx,
+          ny,
+          cache
+        ))
+      ) {
+        throw "what..?";
       }
     }
   }
@@ -311,14 +318,14 @@ function* WaveFunctionGenerateInternalWithResetting(
     ) {
       // placing this tile was unsatisfiable, restore the previous state
       cells[y * width + x] = backup;
-      resetCells(
+      yield* resetCells(
         tiles,
         inverseTileMap,
         cache,
         bitsetSize,
         x,
         y,
-        5,
+        4,
         cells,
         width,
         height

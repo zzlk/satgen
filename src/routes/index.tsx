@@ -186,7 +186,9 @@ export default function () {
 
         setCurrentIteration(iteration);
 
-        await new Promise((resolve) => setTimeout(resolve, sleepTime));
+        if (iteration % 300 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, sleepTime));
+        }
 
         iteration++;
       }
