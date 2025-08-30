@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import styles from "./index.module.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
@@ -40,13 +40,75 @@ export default function () {
   const [currentSynthesisHeight, setCurrentSynthesisHeight] =
     useState<number>(synthesizeHeight);
 
+  // Canvas-based approach
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   // Clear synthesis state when dimensions change
   const clearSynthesisState = useCallback(() => {
     setCurrentSynthesisState(null);
     setCurrentIteration(0);
     setCurrentSynthesisWidth(synthesizeWidth);
     setCurrentSynthesisHeight(synthesizeHeight);
+
+    // Clear canvas
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
   }, [synthesizeWidth, synthesizeHeight]);
+
+  // Function to draw tiles to canvas
+  const drawTileToCanvas = useCallback(
+    (x: number, y: number, tileId: string | null) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const pixelX = x * tileWidth;
+      const pixelY = y * tileHeight;
+
+      if (tileId === null) {
+        // Draw pure red for null tiles
+        ctx.fillStyle = "#FF0000";
+        ctx.fillRect(pixelX, pixelY, tileWidth, tileHeight);
+      } else {
+        // Find the tile image and draw it
+        const tile = enhancedTiles.find((t) => t.id === tileId);
+        if (tile && tile.dataUrl) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, pixelX, pixelY, tileWidth, tileHeight);
+          };
+          img.src = tile.dataUrl;
+        }
+      }
+    },
+    [tileWidth, tileHeight, enhancedTiles]
+  );
+
+  // Function to initialize canvas
+  const initializeCanvas = useCallback(
+    (width: number, height: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      canvas.width = width * tileWidth;
+      canvas.height = height * tileHeight;
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        // Fill canvas with magenta initially
+        ctx.fillStyle = "#FF00FF";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    },
+    [tileWidth, tileHeight]
+  );
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -104,6 +166,9 @@ export default function () {
     setCurrentSynthesisWidth(finalWidth);
     setCurrentSynthesisHeight(finalHeight);
 
+    // Initialize canvas for the new synthesis
+    initializeCanvas(finalWidth, finalHeight);
+
     try {
       const targetWidth = finalWidth;
       const targetHeight = finalHeight;
@@ -149,6 +214,9 @@ export default function () {
             enhancedTiles
           )
         );
+
+        // Update canvas with the new tile
+        drawTileToCanvas(tileUpdate.x, tileUpdate.y, tileUpdate.tile);
 
         setCurrentIteration(iteration);
 
@@ -276,6 +344,27 @@ export default function () {
             <div className={styles.emptyCanvas}>
               <p>No synthesis in progress</p>
               <p>Process an image and start synthesis to see results here</p>
+            </div>
+          )}
+        </div>
+
+        {/* Canvas-based approach */}
+        <div className={styles.canvasContainer}>
+          <h3 className={styles.canvasTitle}>
+            {currentSynthesisState ? "Canvas Synthesis" : "Canvas Ready"}
+          </h3>
+          <canvas
+            ref={canvasRef}
+            style={{
+              border: "1px solid #ccc",
+              maxWidth: "100%",
+              height: "auto",
+            }}
+          />
+          {!currentSynthesisState && (
+            <div className={styles.emptyCanvas}>
+              <p>Canvas ready for synthesis</p>
+              <p>Start synthesis to see canvas updates</p>
             </div>
           )}
         </div>
