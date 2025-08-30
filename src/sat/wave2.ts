@@ -108,6 +108,26 @@ function findCells(
   return result;
 }
 
+function findMinimalCell(
+  width: number,
+  height: number,
+  cells: Array<Bitset>
+): { x: number; y: number; count: number } | null {
+  let result = null;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const count = cells[y * width + x].count();
+
+      if (count > 1 && (result === null || count < result.count)) {
+        result = { x, y, count };
+      }
+    }
+  }
+
+  return result;
+}
+
 function* propagateRemoval(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
   inverseTileMap: Map<number, string>,
@@ -273,13 +293,13 @@ function* WaveFunctionGenerateInternalWithResetting(
   while (true) {
     iteration = iteration + 1;
 
-    const nextCells = findCells(width, height, cells);
+    const nextCell = findMinimalCell(width, height, cells);
 
-    if (nextCells.length === 0) {
+    if (nextCell === null) {
       return;
     }
 
-    const { x, y } = nextCells[0];
+    const { x, y } = nextCell;
 
     let possibleTiles = deterministicShuffle(
       Array.from(cells[y * width + x].keys()),

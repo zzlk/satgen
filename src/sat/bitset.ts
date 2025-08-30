@@ -1,9 +1,11 @@
 class Bitset {
   private bits: Uint32Array;
   private _size: number;
+  private _count: number;
 
   constructor(maxValue: number) {
     this._size = maxValue;
+    this._count = 0;
     // Calculate how many 32-bit integers we need
     const arraySize = Math.ceil(maxValue / 32);
     this.bits = new Uint32Array(arraySize);
@@ -28,6 +30,9 @@ class Bitset {
       bitset.bits[lastWordIndex] = mask;
     }
 
+    // Set the count to the actual number of bits set
+    bitset._count = maxValue;
+
     return bitset;
   }
 
@@ -49,20 +54,35 @@ class Bitset {
 
   set(index: number, value: boolean = true): void {
     const { wordIndex, bitOffset } = this.getBitIndex(index);
-    if (value) {
-      this.bits[wordIndex] |= 1 << bitOffset;
-    } else {
-      this.bits[wordIndex] &= ~(1 << bitOffset);
+    const mask = 1 << bitOffset;
+    const wasSet = (this.bits[wordIndex] & mask) !== 0;
+
+    if (value && !wasSet) {
+      this.bits[wordIndex] |= mask;
+      this._count++;
+    } else if (!value && wasSet) {
+      this.bits[wordIndex] &= ~mask;
+      this._count--;
     }
   }
 
   clear(): void {
     this.bits.fill(0);
+    this._count = 0;
   }
 
   toggle(index: number): void {
     const { wordIndex, bitOffset } = this.getBitIndex(index);
-    this.bits[wordIndex] ^= 1 << bitOffset;
+    const mask = 1 << bitOffset;
+    const wasSet = (this.bits[wordIndex] & mask) !== 0;
+
+    this.bits[wordIndex] ^= mask;
+
+    if (wasSet) {
+      this._count--;
+    } else {
+      this._count++;
+    }
   }
 
   has(index: number): boolean {
@@ -74,16 +94,7 @@ class Bitset {
   }
 
   count(): number {
-    let count = 0;
-    for (let i = 0; i < this.bits.length; i++) {
-      let word = this.bits[i];
-      // Count bits set in this 32-bit word
-      while (word !== 0) {
-        count += word & 1;
-        word >>>= 1;
-      }
-    }
-    return count;
+    return this._count;
   }
 
   isEmpty(): boolean {
@@ -119,6 +130,8 @@ class Bitset {
     for (let i = 0; i < this.bits.length; i++) {
       result.bits[i] = this.bits[i] | other.bits[i];
     }
+    // Calculate count after setting bits
+    result._count = result.calculateCount();
     return result;
   }
 
@@ -127,9 +140,12 @@ class Bitset {
     if (other.size() !== this.size()) {
       throw new Error("Bitsets must have the same size for union operation");
     }
+    // We need to recalculate count since we don't know how many new bits were added
     for (let i = 0; i < this.bits.length; i++) {
       this.bits[i] |= other.bits[i];
     }
+    // Recalculate count after the operation
+    this._count = this.calculateCount();
   }
 
   // In-place intersection for better performance when we don't need to preserve the original
@@ -139,9 +155,12 @@ class Bitset {
         "Bitsets must have the same size for intersection operation"
       );
     }
+    // We need to recalculate count since we don't know how many bits were removed
     for (let i = 0; i < this.bits.length; i++) {
       this.bits[i] &= other.bits[i];
     }
+    // Recalculate count after the operation
+    this._count = this.calculateCount();
   }
 
   intersection(other: Bitset): Bitset {
@@ -154,6 +173,8 @@ class Bitset {
     for (let i = 0; i < this.bits.length; i++) {
       result.bits[i] = this.bits[i] & other.bits[i];
     }
+    // Calculate count after setting bits
+    result._count = result.calculateCount();
     return result;
   }
 
@@ -167,6 +188,8 @@ class Bitset {
     for (let i = 0; i < this.bits.length; i++) {
       result.bits[i] = this.bits[i] & ~other.bits[i];
     }
+    // Calculate count after setting bits
+    result._count = result.calculateCount();
     return result;
   }
 
@@ -185,6 +208,7 @@ class Bitset {
   clone(): Bitset {
     const result = new Bitset(this._size);
     result.bits.set(this.bits);
+    result._count = this._count;
     return result;
   }
 
@@ -216,6 +240,20 @@ class Bitset {
       }
     }
     return null;
+  }
+
+  // Helper method to calculate count (used when we can't easily track changes)
+  private calculateCount(): number {
+    let count = 0;
+    for (let i = 0; i < this.bits.length; i++) {
+      let word = this.bits[i];
+      // Count bits set in this 32-bit word
+      while (word !== 0) {
+        count += word & 1;
+        word >>>= 1;
+      }
+    }
+    return count;
   }
 }
 
