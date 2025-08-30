@@ -28,6 +28,29 @@ export default function () {
 
   // Canvas-based approach
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tileImageCache = useRef<Map<string, ImageBitmap>>(new Map());
+
+  // Preload tiles as ImageBitmaps for better performance
+  const preloadTiles = useCallback(async () => {
+    const promises: Promise<void>[] = [];
+
+    for (const tile of enhancedTiles) {
+      if (!tileImageCache.current.has(tile.id)) {
+        const promise = fetch(tile.dataUrl)
+          .then((response) => response.blob())
+          .then((blob) => createImageBitmap(blob))
+          .then((imageBitmap) => {
+            tileImageCache.current.set(tile.id, imageBitmap);
+          })
+          .catch((error) => {
+            console.error(`Error preloading tile ${tile.id}:`, error);
+          });
+        promises.push(promise);
+      }
+    }
+
+    await Promise.all(promises);
+  }, [enhancedTiles]);
 
   // Clear canvas
   const clearCanvas = useCallback(() => {
@@ -38,6 +61,8 @@ export default function () {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
+    // Clear the tile cache when clearing canvas
+    tileImageCache.current.clear();
   }, []);
 
   // Function to draw tiles to canvas
@@ -57,18 +82,14 @@ export default function () {
         ctx.fillStyle = "#FF0000";
         ctx.fillRect(pixelX, pixelY, tileWidth, tileHeight);
       } else {
-        // Find the tile image and draw it
-        const tile = enhancedTiles.find((t) => t.id === tileId);
-        if (tile && tile.dataUrl) {
-          const img = new Image();
-          img.onload = () => {
-            ctx.drawImage(img, pixelX, pixelY, tileWidth, tileHeight);
-          };
-          img.src = tile.dataUrl;
+        // Use cached ImageBitmap for better performance
+        const imageBitmap = tileImageCache.current.get(tileId);
+        if (imageBitmap) {
+          ctx.drawImage(imageBitmap, pixelX, pixelY, tileWidth, tileHeight);
         }
       }
     },
-    [tileWidth, tileHeight, enhancedTiles]
+    [tileWidth, tileHeight]
   );
 
   // Function to initialize canvas
@@ -89,6 +110,11 @@ export default function () {
     },
     [tileWidth, tileHeight]
   );
+
+  // Clear tile cache when enhanced tiles change
+  useEffect(() => {
+    tileImageCache.current.clear();
+  }, [enhancedTiles]);
 
   const handleFileSelect = useCallback((file: File) => {
     setSelectedFile(file);
@@ -144,6 +170,9 @@ export default function () {
 
     // Initialize canvas for the new synthesis
     initializeCanvas(finalWidth, finalHeight);
+
+    // Preload tiles as ImageBitmaps for better performance
+    await preloadTiles();
 
     try {
       const targetWidth = finalWidth;
@@ -245,10 +274,7 @@ export default function () {
                   <>
                     <h4 className={styles.progressTitle}>Synthesis Progress</h4>
                     <div className={styles.progressInfo}>
-                      <p>
-                        Generating image using Wave Function Collapse
-                        algorithm...
-                      </p>
+                      <p>Generating image algorithm...</p>
                     </div>
                   </>
                 )}
@@ -271,12 +297,6 @@ export default function () {
               height: "auto",
             }}
           />
-          {!isSynthesizing && (
-            <div className={styles.emptyCanvas}>
-              <p>Canvas ready for synthesis</p>
-              <p>Process an image and start synthesis to see results here</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
