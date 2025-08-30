@@ -540,13 +540,6 @@ export function* gen(
     }
   }
 
-  // yield all cells as null initially to reset ui
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      yield { x, y, tile: null };
-    }
-  }
-
   const result = yield* WaveFunctionGenerateInternalWithResetting(
     0,
     newTiles,

@@ -21,14 +21,7 @@ describe("basic tests", () => {
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 1, 1, 42);
 
-    // First yield should be initial reset (all cells as null)
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
-    // Next yields should be tile updates
+    // First yield should be tile placement
     {
       const result = generator.next();
       expect(result.done).toBe(false);
@@ -45,19 +38,6 @@ describe("basic tests", () => {
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 1, 2, 42);
 
-    // First yields should be initial reset (all cells as null)
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
-    }
-
     // Should eventually produce a valid solution
     let result;
     let count = 0;
@@ -72,31 +52,6 @@ describe("basic tests", () => {
 
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 2, 2, 42);
-
-    // First yields should be initial reset (all cells as null)
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 1, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 1, y: 1, tile: null });
-    }
 
     // Should eventually produce a valid solution
     let result;
@@ -185,11 +140,6 @@ describe("error cases and edge cases", () => {
     // This should eventually return null when no solution is found
     const generator = gen(tiles, 1, 1, 42);
 
-    // First yield should be initial reset
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-
     // The generator should eventually find a solution (A or B)
     const finalResult = generator.next();
     expect(finalResult.done).toBe(false);
@@ -258,13 +208,6 @@ describe("complex tile configurations", () => {
 
     const generator = gen(selfConnectingTiles, 1, 1, 42);
 
-    // First yield should be initial reset
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
     // Should eventually produce a valid solution
     let result;
     let count = 0;
@@ -300,31 +243,6 @@ describe("complex tile configurations", () => {
 
     const generator = gen(threeTiles, 2, 2, 42);
 
-    // First yields should be initial reset (all cells as null)
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 1, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 1, y: 1, tile: null });
-    }
-
     // The generator should eventually produce a valid solution
     let result;
     let count = 0;
@@ -357,19 +275,6 @@ describe("complex tile configurations", () => {
     ]);
 
     const generator = gen(directionalTiles, 1, 2, 42);
-
-    // First yields should be initial reset (all cells as null)
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-    }
-
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
-    }
 
     // Should eventually produce a valid solution
     let result;
@@ -404,15 +309,6 @@ describe("large grid tests", () => {
 
     const generator = gen(tiles, 3, 3, 42);
 
-    // First yields should be initial reset (all 9 cells as null)
-    for (let y = 0; y < 3; y++) {
-      for (let x = 0; x < 3; x++) {
-        const result = generator.next();
-        expect(result.done).toBe(false);
-        expect(result.value).toStrictEqual({ x, y, tile: null });
-      }
-    }
-
     // Should eventually produce a valid solution
     let result;
     let count = 0;
@@ -439,11 +335,6 @@ describe("propagation edge cases", () => {
     ]);
 
     const generator = gen(emptyConnectionsTiles, 1, 1, 42);
-
-    // First yield should be initial reset
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
     // Should eventually produce a valid solution
     let finalResult;
@@ -497,10 +388,10 @@ describe("invalid state tests", () => {
     // This should work normally
     const generator = gen(tiles, 1, 1, 42);
 
-    // First yield should be initial reset
+    // Should work normally and complete immediately
     const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
+    expect(result.done).toBe(true);
+    expect(result.value).toStrictEqual(["A"]);
   });
 });
 
@@ -523,7 +414,7 @@ describe("seed consistency tests", () => {
     const generator1 = gen(tiles, 2, 2, 42);
     const generator2 = gen(tiles, 2, 2, 42);
 
-    // Get initial states
+    // Get initial states (should be the same since same seed)
     const result1 = generator1.next();
     const result2 = generator2.next();
     expect(result1.value).toStrictEqual(result2.value);
@@ -559,10 +450,10 @@ describe("seed consistency tests", () => {
     const generator1 = gen(tiles, 2, 2, 42);
     const generator2 = gen(tiles, 2, 2, 43);
 
-    // Get initial states (should be the same)
+    // Get initial states (might be different due to different seeds)
     const result1 = generator1.next();
     const result2 = generator2.next();
-    expect(result1.value).toStrictEqual(result2.value);
+    // Don't expect them to be the same since different seeds
 
     // Get final solutions (might be different due to different seeds)
     let solution1, solution2;
@@ -675,15 +566,6 @@ describe("advanced edge cases for maximum coverage", () => {
     // This should work and eventually find a solution
     const generator = gen(tiles, 2, 2, 42);
 
-    // First yields should be initial reset (all 4 cells as null)
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 2; x++) {
-        const result = generator.next();
-        expect(result.done).toBe(false);
-        expect(result.value).toStrictEqual({ x, y, tile: null });
-      }
-    }
-
     // Should eventually produce a valid solution
     let finalResult;
     let count = 0;
@@ -724,15 +606,6 @@ describe("advanced edge cases for maximum coverage", () => {
 
     const generator = gen(tiles, 3, 3, 42);
 
-    // First yields should be initial reset (all 9 cells as null)
-    for (let y = 0; y < 3; y++) {
-      for (let x = 0; x < 3; x++) {
-        const result = generator.next();
-        expect(result.done).toBe(false);
-        expect(result.value).toStrictEqual({ x, y, tile: null });
-      }
-    }
-
     // Should eventually produce a valid solution
     let finalResult;
     let count = 0;
@@ -760,11 +633,6 @@ describe("advanced edge cases for maximum coverage", () => {
     ]);
 
     const generator = gen(tiles, 1, 1, 42);
-
-    // First yield should be initial reset
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
     // Should eventually produce a valid solution
     let finalResult;
@@ -799,15 +667,10 @@ describe("advanced edge cases for maximum coverage", () => {
     // This should work normally
     const generator = gen(tiles, 1, 1, 42);
 
-    // First yield should be initial reset
+    // First yield should be tile placement
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
-
-    // Next yield should be tile update
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(false);
-    expect(finalResult.value).toStrictEqual({ x: 0, y: 0, tile: "A" });
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: "A" });
 
     const solution = generator.next();
     expect(solution.done).toBe(true);
