@@ -5,6 +5,9 @@ import { SupportCache } from "./support-cache";
 // cool idea for initializing the board
 // sweep across
 
+// Change algorithm from recursive to iterative and when a unsat occurs, reset a 3x3 tile area centered on the unsat tile
+// then call propagateRemove on the 4x4 shell that surrounds the 3x3 reset area. Then continue iterating.
+
 const DIRECTIONS: Array<{
   name: string;
   oppositeName: string;
@@ -269,11 +272,12 @@ function* WaveFunctionGenerateInternal(
             cache
           );
 
-          if (ret !== null) {
-            return ret;
-          } else {
-            // cells[y * width + x] = backup;
+          if (ret === null) {
+            cells[y * width + x] = backup;
+            continue;
           }
+
+          return ret;
         }
     }
   }
