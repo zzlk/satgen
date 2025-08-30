@@ -1,3 +1,5 @@
+import styles from "./TileConfig.module.css";
+
 interface TileConfigProps {
   tileWidth: number;
   setTileWidth: (width: number) => void;
@@ -17,19 +19,19 @@ export default function TileConfig({
 }: TileConfigProps) {
   return (
     <>
-      <div className="success-message">
-        <h4 className="success-title">File Selected Successfully! ✅</h4>
-        <p className="success-text">
+      <div className={styles.successMessage}>
+        <h4 className={styles.successTitle}>File Selected Successfully! ✅</h4>
+        <p className={styles.successText}>
           Your image is ready for processing. Configure tile dimensions below.
         </p>
       </div>
 
-      <div className="tile-config">
-        <h3 className="tile-config-title">Tile Configuration</h3>
+      <div className={styles.tileConfig}>
+        <h3 className={styles.tileConfigTitle}>Tile Configuration</h3>
 
-        <div className="tile-inputs">
-          <div className="input-group">
-            <label className="input-label">Tile Width (px)</label>
+        <div className={styles.tileInputs}>
+          <div className={styles.inputGroup}>
+            <label className={styles.inputLabel}>Tile Width (px)</label>
             <input
               type="number"
               value={tileWidth}
@@ -37,12 +39,12 @@ export default function TileConfig({
                 setTileWidth(Math.max(1, parseInt(e.target.value) || 1))
               }
               min="1"
-              className="dimension-input"
+              className={styles.dimensionInput}
             />
           </div>
 
-          <div className="input-group">
-            <label className="input-label">Tile Height (px)</label>
+          <div className={styles.inputGroup}>
+            <label className={styles.inputLabel}>Tile Height (px)</label>
             <input
               type="number"
               value={tileHeight}
@@ -50,14 +52,14 @@ export default function TileConfig({
                 setTileHeight(Math.max(1, parseInt(e.target.value) || 1))
               }
               min="1"
-              className="dimension-input"
+              className={styles.dimensionInput}
             />
           </div>
 
           <button
             onClick={onCutImage}
             disabled={isProcessing}
-            className="cut-button"
+            className={styles.cutButton}
           >
             {isProcessing ? "Processing..." : "Cut Image into Tiles"}
           </button>

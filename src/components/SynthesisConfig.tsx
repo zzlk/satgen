@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import styles from "./SynthesisConfig.module.css";
 
 interface SynthesisConfigProps {
   synthesizeWidth: number;
@@ -55,17 +56,17 @@ export default function SynthesisConfig({
     onClearState();
   };
   return (
-    <div className="synthesis-section">
-      <h3 className="synthesis-title">Image Synthesis</h3>
-      <p className="synthesis-description">
+    <div className={styles.synthesisSection}>
+      <h3 className={styles.synthesisTitle}>Image Synthesis</h3>
+      <p className={styles.synthesisDescription}>
         Create a new image using the Wave Function Collapse algorithm. The
         generation is deterministic - using the same seed will always produce
         the same result. Enter dimensions in tile units.
       </p>
 
-      <div className="synthesis-inputs">
-        <div className="input-group">
-          <label className="input-label">Width (tiles)</label>
+      <div className={styles.synthesisInputs}>
+        <div className={styles.inputGroup}>
+          <label className={styles.inputLabel}>Width (tiles)</label>
           <input
             type="number"
             value={localWidth}
@@ -73,12 +74,12 @@ export default function SynthesisConfig({
               handleWidthChange(Math.max(1, parseInt(e.target.value) || 1))
             }
             min="1"
-            className="dimension-input"
+            className={styles.dimensionInput}
           />
         </div>
 
-        <div className="input-group">
-          <label className="input-label">Height (tiles)</label>
+        <div className={styles.inputGroup}>
+          <label className={styles.inputLabel}>Height (tiles)</label>
           <input
             type="number"
             value={localHeight}
@@ -86,18 +87,18 @@ export default function SynthesisConfig({
               handleHeightChange(Math.max(1, parseInt(e.target.value) || 1))
             }
             min="1"
-            className="dimension-input"
+            className={styles.dimensionInput}
           />
         </div>
 
-        <div className="input-group">
-          <label className="input-label">Seed</label>
+        <div className={styles.inputGroup}>
+          <label className={styles.inputLabel}>Seed</label>
           <div style={{ display: "flex", gap: "8px" }}>
             <input
               type="number"
               value={synthesisSeed}
               onChange={(e) => setSynthesisSeed(parseInt(e.target.value) || 0)}
-              className="dimension-input"
+              className={styles.dimensionInput}
               title="Seed for deterministic generation. Same seed produces same result."
             />
             <button
@@ -120,8 +121,10 @@ export default function SynthesisConfig({
           </div>
         </div>
 
-        <div className="input-group">
-          <label className="input-label">Animation Speed: {sleepTime}ms</label>
+        <div className={styles.inputGroup}>
+          <label className={styles.inputLabel}>
+            Animation Speed: {sleepTime}ms
+          </label>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <input
               type="range"
@@ -130,7 +133,7 @@ export default function SynthesisConfig({
               step="50"
               value={sleepTime}
               onChange={(e) => setSleepTime(parseInt(e.target.value))}
-              className="speed-slider"
+              className={styles.speedSlider}
               title="Adjust animation speed during synthesis"
             />
             <span style={{ fontSize: "12px", color: "#666", minWidth: "40px" }}>
@@ -155,7 +158,7 @@ export default function SynthesisConfig({
         <button
           onClick={handleSynthesize}
           disabled={isSynthesizing}
-          className="synthesize-button"
+          className={styles.synthesizeButton}
         >
           {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
         </button>

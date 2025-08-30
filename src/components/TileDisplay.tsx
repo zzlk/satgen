@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
 import { Tile } from "../utils/Tile";
 import { TileCollection } from "../utils/TileCollection";
+import styles from "./TileDisplay.module.css";
 
 interface TileDisplayProps {
   tiles: Tile[];
@@ -9,38 +10,42 @@ interface TileDisplayProps {
 
 // Memoized individual tile component to prevent unnecessary re-renders
 const TileItem = memo(({ tile }: { tile: Tile }) => (
-  <div className="tile-item">
-    <img src={tile.dataUrl} alt={tile.getLabel()} className="tile-image" />
-    <p className="tile-label">{tile.getLabel()}</p>
-    <p className="tile-hash">Hash: {tile.getDataUrlHash()}</p>
-    <div className="tile-borders-detailed">
-      <div className="border-direction">
-        <span className="border-label">N:</span>
-        <span className="border-ids">
+  <div className={styles.tileItem}>
+    <img
+      src={tile.dataUrl}
+      alt={tile.getLabel()}
+      className={styles.tileImage}
+    />
+    <p className={styles.tileLabel}>{tile.getLabel()}</p>
+    <p className={styles.tileHash}>Hash: {tile.getDataUrlHash()}</p>
+    <div className={styles.tileBordersDetailed}>
+      <div className={styles.borderDirection}>
+        <span className={styles.borderLabel}>N:</span>
+        <span className={styles.borderIds}>
           {tile.getBorderIds("north").length > 0
             ? tile.getBorderIds("north").join(", ")
             : "none"}
         </span>
       </div>
-      <div className="border-direction">
-        <span className="border-label">E:</span>
-        <span className="border-ids">
+      <div className={styles.borderDirection}>
+        <span className={styles.borderLabel}>E:</span>
+        <span className={styles.borderIds}>
           {tile.getBorderIds("east").length > 0
             ? tile.getBorderIds("east").join(", ")
             : "none"}
         </span>
       </div>
-      <div className="border-direction">
-        <span className="border-label">S:</span>
-        <span className="border-ids">
+      <div className={styles.borderDirection}>
+        <span className={styles.borderLabel}>S:</span>
+        <span className={styles.borderIds}>
           {tile.getBorderIds("south").length > 0
             ? tile.getBorderIds("south").join(", ")
             : "none"}
         </span>
       </div>
-      <div className="border-direction">
-        <span className="border-label">W:</span>
-        <span className="border-ids">
+      <div className={styles.borderDirection}>
+        <span className={styles.borderLabel}>W:</span>
+        <span className={styles.borderIds}>
           {tile.getBorderIds("west").length > 0
             ? tile.getBorderIds("west").join(", ")
             : "none"}
@@ -133,7 +138,7 @@ export default function TileDisplay({
   // Memoize the tiles grid to prevent unnecessary re-renders
   const tilesGrid = useMemo(
     () => (
-      <div className="tiles-grid">
+      <div className={styles.tilesGrid}>
         {enhancedTiles.map((tile: Tile) => (
           <TileItem key={tile.id} tile={tile} />
         ))}
@@ -148,26 +153,26 @@ export default function TileDisplay({
 
   if (isEnhancing) {
     return (
-      <div className="tiles-section">
-        <h3 className="tiles-title">Processing Tiles...</h3>
+      <div className={styles.tilesSection}>
+        <h3 className={styles.tilesTitle}>Processing Tiles...</h3>
         <p>Merging duplicates and analyzing pixel borders...</p>
       </div>
     );
   }
 
   return (
-    <div className="tiles-section">
-      <h3 className="tiles-title">
+    <div className={styles.tilesSection}>
+      <h3 className={styles.tilesTitle}>
         Generated Tiles ({enhancedTiles.length} unique, {tiles.length} total)
       </h3>
       {enhancedTiles.length < tiles.length && (
-        <p className="merge-info">
+        <p className={styles.mergeInfo}>
           Merged {tiles.length - enhancedTiles.length} duplicate tiles
         </p>
       )}
 
       {borderEnhancementStats && borderEnhancementStats.addedBorders > 0 && (
-        <p className="enhancement-info">
+        <p className={styles.enhancementInfo}>
           Added {borderEnhancementStats.addedBorders} border relationships
           through pixel analysis (from{" "}
           {borderEnhancementStats.originalBorderCount} to{" "}

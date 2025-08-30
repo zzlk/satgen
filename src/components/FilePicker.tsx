@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import styles from "./FilePicker.module.css";
 
 interface FilePickerProps {
   onFileSelect: (file: File) => void;
@@ -71,7 +72,7 @@ export default function FilePicker({
 
   return (
     <div
-      className={`upload-area ${isDragOver ? "drag-over" : ""}`}
+      className={`${styles.uploadArea} ${isDragOver ? styles.dragOver : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -87,23 +88,29 @@ export default function FilePicker({
 
       {!selectedFile ? (
         <>
-          <div className="upload-icon">📁</div>
-          <h3 className="upload-title">Drop your image here</h3>
-          <p className="upload-subtitle">or click to browse files</p>
-          <div className="upload-formats">Supports: JPG, PNG, GIF, WebP</div>
+          <div className={styles.uploadIcon}>📁</div>
+          <h3 className={styles.uploadTitle}>Drop your image here</h3>
+          <p className={styles.uploadSubtitle}>or click to browse files</p>
+          <div className={styles.uploadFormats}>
+            Supports: JPG, PNG, GIF, WebP
+          </div>
         </>
       ) : (
-        <div className="preview-container">
+        <div className={styles.previewContainer}>
           {previewUrl && (
-            <img src={previewUrl} alt="Preview" className="preview-image" />
+            <img
+              src={previewUrl}
+              alt="Preview"
+              className={styles.previewImage}
+            />
           )}
-          <div className="file-info">
-            <p className="file-name">{selectedFile.name}</p>
-            <p className="file-size">
+          <div className={styles.fileInfo}>
+            <p className={styles.fileName}>{selectedFile.name}</p>
+            <p className={styles.fileSize}>
               {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
             </p>
           </div>
-          <button onClick={handleRemoveFile} className="remove-button">
+          <button onClick={handleRemoveFile} className={styles.removeButton}>
             Remove File
           </button>
         </div>

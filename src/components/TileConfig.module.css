@@ -1,0 +1,75 @@
+.successMessage {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #e8f5e8;
+  border-radius: 8px;
+  border: 1px solid #4caf50;
+}
+
+.successTitle {
+  margin: 0 0 8px 0;
+  color: #2e7d32;
+}
+
+.successText {
+  margin: 0;
+  font-size: 14px;
+  color: #388e3c;
+}
+
+.tileConfig {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.tileConfigTitle {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.tileInputs {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inputLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.dimensionInput {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 120px;
+}
+
+.cutButton {
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 20px;
+}
+
+.cutButton:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}

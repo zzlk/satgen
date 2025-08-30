@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, useCallback } from "react";
+import styles from "./TileGrid.module.css";
 
 interface TileGridProps {
   state: Array<Set<string>> | null;
@@ -261,54 +262,27 @@ const TileGrid = ({
   }
 
   return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        width: "100%",
-      }}
-    >
+    <div className={styles.tileGridContainer}>
       {/* Canvas container */}
       <div
+        className={styles.canvasContainer}
         style={{
           width: totalWidth,
           height: totalHeight,
-          position: "relative",
-          border: "1px solid #ccc",
-          borderRadius: "4px",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
         }}
       >
         <canvas
           ref={canvasRef}
+          className={styles.canvas}
           style={{
             width: totalWidth,
             height: totalHeight,
-            display: "block",
-            imageRendering: "pixelated", // For better pixel art display
           }}
         />
       </div>
 
       {/* Iteration overlay */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 10,
-          background: "rgba(0, 0, 0, 0.7)",
-          color: "#FFFFFF",
-          padding: "5px 10px",
-          borderRadius: "4px",
-          fontSize: "16px",
-          fontFamily: "Arial",
-          zIndex: 10,
-        }}
-      >
-        Iteration: {iteration}
-      </div>
+      <div className={styles.iterationOverlay}>Iteration: {iteration}</div>
     </div>
   );
 };

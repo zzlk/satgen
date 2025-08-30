@@ -1,0 +1,96 @@
+.imageTileCutterContainer {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.imageTileCutterTitle {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+}
+
+.synthesisProgress {
+  min-height: auto;
+  transition: min-height 0.3s ease-in-out;
+}
+
+.progressTitle {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.progressInfo {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.partialResult {
+  margin-top: 20px;
+}
+
+.partialImageContainer {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.partialInfo {
+  margin: 16px 0 0 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.synthesizedResult {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.resultTitle {
+  margin: 0 0 8px 0;
+  color: #333;
+}
+
+.resultInfo {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.synthesizedImageContainer {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.synthesizedImage {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ddd;
+  image-rendering: pixelated;
+}
+
+.downloadButton {
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  display: block;
+  margin: 0 auto;
+}
+
+.downloadButton:hover {
+  background: #45a049;
+}

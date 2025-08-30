@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import "../styles/ImageTileCutter.css";
+import styles from "./index.module.css";
 import FilePicker from "../components/FilePicker";
 import TileDisplay from "../components/TileDisplay";
 import TileGrid from "../components/TileGrid";
@@ -157,8 +157,8 @@ export default function () {
   };
 
   return (
-    <div className="image-tile-cutter-container">
-      <h1 className="image-tile-cutter-title">Image Tile Cutter</h1>
+    <div className={styles.imageTileCutterContainer}>
+      <h1 className={styles.imageTileCutterTitle}>Image Tile Cutter</h1>
 
       <FilePicker
         onFileSelect={handleFileSelect}
@@ -201,16 +201,15 @@ export default function () {
 
           {/* Progress Display */}
           <div
-            className="synthesis-progress"
+            className={styles.synthesisProgress}
             style={{
               minHeight: currentSynthesisState ? "400px" : "auto",
-              transition: "min-height 0.3s ease-in-out",
             }}
           >
             {isSynthesizing && (
               <>
-                <h4 className="progress-title">Synthesis Progress</h4>
-                <div className="progress-info">
+                <h4 className={styles.progressTitle}>Synthesis Progress</h4>
+                <div className={styles.progressInfo}>
                   <p>
                     Generating image using Wave Function Collapse algorithm...
                   </p>
@@ -219,17 +218,9 @@ export default function () {
             )}
 
             {currentSynthesisState && (
-              <div className="partial-result">
+              <div className={styles.partialResult}>
                 <h5>{isSynthesizing ? "Current State" : "Final Result"}</h5>
-                <div
-                  className="partial-image-container"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginTop: "10px",
-                    marginBottom: "10px",
-                  }}
-                >
+                <div className={styles.partialImageContainer}>
                   <TileGrid
                     state={currentSynthesisState}
                     width={synthesizeWidth}
@@ -240,7 +231,7 @@ export default function () {
                     iteration={currentIteration}
                   />
                 </div>
-                <p className="partial-info">
+                <p className={styles.partialInfo}>
                   <strong>Legend:</strong>
                   <br />•{" "}
                   <span style={{ color: "#8B5CF6" }}>Purple/Blue tiles</span>
