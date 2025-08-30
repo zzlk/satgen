@@ -325,7 +325,7 @@ function* WaveFunctionGenerateInternalWithResetting(
         bitsetSize,
         x,
         y,
-        4,
+        6,
         cells,
         width,
         height

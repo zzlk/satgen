@@ -5,11 +5,11 @@ interface SupportCacheEntry {
   cell: Bitset;
   direction: number;
   support: Bitset;
-  hash: string;
+  hash: number;
 }
 
 export class SupportCache {
-  private cache: Map<string, SupportCacheEntry> = new Map();
+  private cache: Map<number, SupportCacheEntry> = new Map();
   private hits = 0;
   private misses = 0;
   private totalCalculations = 0;
@@ -17,9 +17,25 @@ export class SupportCache {
   private readonly maxCacheSize = 50000;
   private readonly evictionBatchSize = 100;
 
-  // Generate a simple hash for a bitset to speed up cache lookups
-  private bitsetHash(bitset: Bitset): string {
-    return bitset.toString();
+  // Generate an efficient numeric hash for a bitset using the underlying Uint32Array data
+  private bitsetHash(bitset: Bitset): number {
+    // Access the private bits array using bracket notation to get the underlying data
+    const bits = (bitset as any).bits as Uint32Array;
+    let hash = 0;
+
+    // Use a simple but effective hash function (djb2 variant)
+    for (let i = 0; i < bits.length; i++) {
+      hash = ((hash << 5) - hash + bits[i]) | 0; // | 0 ensures 32-bit integer
+    }
+
+    return hash;
+  }
+
+  // Generate a composite cache key from cell hash and direction
+  private getCacheKey(cellHash: number, direction: number): number {
+    // Combine cell hash and direction into a single numeric key
+    // Use bit shifting to avoid collisions
+    return (cellHash << 2) | (direction & 0x3);
   }
 
   clear(): void {
@@ -59,7 +75,7 @@ export class SupportCache {
   ): Bitset {
     // Create a unique key for this cache entry
     const cellHash = this.bitsetHash(cell);
-    const cacheKey = `${cellHash}:${direction}`;
+    const cacheKey = this.getCacheKey(cellHash, direction);
 
     // Check cache using O(1) hash map lookup
     const cached = this.cache.get(cacheKey);
