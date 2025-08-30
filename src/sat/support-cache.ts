@@ -14,7 +14,7 @@ export class SupportCache {
   private misses = 0;
   private totalCalculations = 0;
   private cacheSizePeak = 0;
-  private readonly maxCacheSize = 50000;
+  private readonly maxCacheSize = 200000;
   private readonly evictionBatchSize = 100;
 
   // Generate an efficient numeric hash for a bitset using the underlying Uint32Array data

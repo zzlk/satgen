@@ -8,8 +8,6 @@ interface SynthesisConfigProps {
   setSynthesizeHeight: (height: number) => void;
   synthesisSeed: number;
   setSynthesisSeed: (seed: number) => void;
-  sleepTime: number;
-  setSleepTime: (time: number) => void;
   isSynthesizing: boolean;
   onSynthesize: (targetWidth?: number, targetHeight?: number) => void;
   onClearState: () => void;
@@ -22,8 +20,6 @@ export default function SynthesisConfig({
   setSynthesizeHeight,
   synthesisSeed,
   setSynthesisSeed,
-  sleepTime,
-  setSleepTime,
   isSynthesizing,
   onSynthesize,
   onClearState,
@@ -118,40 +114,6 @@ export default function SynthesisConfig({
             >
               🎲
             </button>
-          </div>
-        </div>
-
-        <div className={styles.inputGroup}>
-          <label className={styles.inputLabel}>
-            Animation Speed: {sleepTime}ms
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <input
-              type="range"
-              min="0"
-              max="2000"
-              step="50"
-              value={sleepTime}
-              onChange={(e) => setSleepTime(parseInt(e.target.value))}
-              className={styles.speedSlider}
-              title="Adjust animation speed during synthesis"
-            />
-            <span style={{ fontSize: "12px", color: "#666", minWidth: "40px" }}>
-              {sleepTime}ms
-            </span>
-          </div>
-          <div style={{ fontSize: "11px", color: "#888", marginTop: "4px" }}>
-            {sleepTime === 0
-              ? "No delay (fastest)"
-              : sleepTime <= 100
-              ? "Very fast"
-              : sleepTime <= 300
-              ? "Fast"
-              : sleepTime <= 700
-              ? "Normal"
-              : sleepTime <= 1000
-              ? "Slow"
-              : "Very slow"}
           </div>
         </div>
 

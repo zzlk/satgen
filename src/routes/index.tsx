@@ -11,6 +11,7 @@ import { gen } from "../sat/wave2";
 import { convertTilesToWave2Format } from "../utils/tileUtils";
 
 export default function () {
+  console.log("reender");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [tileWidth, setTileWidth] = useState<number>(32);
@@ -24,7 +25,6 @@ export default function () {
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
   const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [sleepTime, setSleepTime] = useState<number>(500);
 
   // Canvas-based approach
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -205,8 +205,8 @@ export default function () {
         // Update canvas with the new tile
         drawTileToCanvas(tileUpdate.x, tileUpdate.y, tileUpdate.tile);
 
-        if (iteration % 300 === 0) {
-          await new Promise((resolve) => setTimeout(resolve, sleepTime));
+        if (iteration % 2000 == 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
         iteration++;
@@ -261,8 +261,6 @@ export default function () {
                 setSynthesizeHeight={setSynthesizeHeight}
                 synthesisSeed={synthesisSeed}
                 setSynthesisSeed={setSynthesisSeed}
-                sleepTime={sleepTime}
-                setSleepTime={setSleepTime}
                 isSynthesizing={isSynthesizing}
                 onSynthesize={handleSynthesize}
                 onClearState={clearCanvas}
