@@ -108,8 +108,9 @@ function findCells(
   return result;
 }
 
-function propagateRemoval(
+function* propagateRemoval(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  inverseTileMap: Map<number, string>,
   bitsetSize: number,
   width: number,
   height: number,
@@ -117,7 +118,7 @@ function propagateRemoval(
   x: number,
   y: number,
   cache: SupportCache
-): boolean {
+): Generator<{ x: number; y: number; tile: string | null }, boolean> {
   const backup = new Map<{ x: number; y: number }, Bitset>();
 
   const queue = new Array<{ x: number; y: number }>();
@@ -158,15 +159,21 @@ function propagateRemoval(
       cells[y * width + x] = cells[y * width + x].intersection(support);
     }
 
-    if (cells[y * width + x].count() === 0) {
-      cells[y * width + x] = cellBackup;
+    switch (cells[y * width + x].count()) {
+      case 0:
+        cells[y * width + x] = cellBackup;
 
-      // restore the cells to their original state before we started messing with it
-      for (const [{ x, y }, cell] of backup.entries()) {
-        cells[y * width + x] = cell;
-      }
+        // restore the cells to their original state before we started messing with it
+        for (const [{ x, y }, cell] of backup.entries()) {
+          cells[y * width + x] = cell;
+          yield { x, y, tile: null };
+        }
 
-      return false; // unsatisfiable
+        return false; // unsatisfiable
+
+      case 1:
+        const tile = cells[y * width + x].keys().next().value;
+        yield { x, y, tile: inverseTileMap.get(tile)! };
     }
 
     // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
@@ -191,8 +198,9 @@ function propagateRemoval(
   return true;
 }
 
-function resetCells(
+function* resetCells(
   tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  inverseTileMap: Map<number, string>,
   cache: SupportCache,
   bitsetSize: number,
   x: number,
@@ -201,7 +209,7 @@ function resetCells(
   cells: Array<Bitset>,
   cellsWidth: number,
   cellsHeight: number
-) {
+): Generator<{ x: number; y: number; tile: string | null }> {
   // reset all the cells within radius centered on {x, y} to be all possible tiles.
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -210,6 +218,7 @@ function resetCells(
 
       if (nx >= 0 && nx < bitsetSize && ny >= 0 && ny < bitsetSize) {
         cells[ny * bitsetSize + nx] = Bitset.createFull(bitsetSize);
+        yield { x: nx, y: ny, tile: null };
       }
     }
   }
@@ -221,8 +230,9 @@ function resetCells(
       const ny = y + dy;
       if (nx >= 0 && nx < cellsWidth && ny >= 0 && ny < cellsHeight) {
         if (
-          !propagateRemoval(
+          !(yield* propagateRemoval(
             tiles,
+            inverseTileMap,
             bitsetSize,
             cellsWidth,
             cellsHeight,
@@ -230,7 +240,7 @@ function resetCells(
             nx,
             ny,
             cache
-          )
+          ))
         ) {
           throw "what..?";
         }
@@ -250,7 +260,10 @@ function* WaveFunctionGenerateInternalWithResetting(
   seed: number,
   cells: Array<Bitset>,
   cache: SupportCache
-): Generator<Array<Set<string>>, Array<string> | null> {
+): Generator<
+  { x: number; y: number; tile: string | null },
+  Array<string> | null
+> {
   let iteration = -1;
 
   while (true) {
@@ -281,24 +294,37 @@ function* WaveFunctionGenerateInternalWithResetting(
 
     cells[y * width + x].clear();
     cells[y * width + x].set(tile, true);
+    yield { x, y, tile: inverseTileMap.get(tile)! };
 
     if (
-      !propagateRemoval(tiles, bitsetSize, width, height, cells, x, y, cache)
+      !(yield* propagateRemoval(
+        tiles,
+        inverseTileMap,
+        bitsetSize,
+        width,
+        height,
+        cells,
+        x,
+        y,
+        cache
+      ))
     ) {
       // placing this tile was unsatisfiable, restore the previous state
       cells[y * width + x] = backup;
-      resetCells(tiles, cache, bitsetSize, x, y, 5, cells, width, height);
+      resetCells(
+        tiles,
+        inverseTileMap,
+        cache,
+        bitsetSize,
+        x,
+        y,
+        5,
+        cells,
+        width,
+        height
+      );
       console.log("unsat at ", x, y);
-      yield cells.map(
-        (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
-      );
       continue;
-    }
-
-    if (iteration % 9999999 == 0) {
-      yield cells.map(
-        (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
-      );
     }
   }
 }
@@ -314,7 +340,10 @@ function* WaveFunctionGenerateWithBacktracking(
   seed: number,
   cells: Array<Bitset>,
   cache: SupportCache
-): Generator<Array<Set<string>>, Array<string> | null> {
+): Generator<
+  { x: number; y: number; tile: string | null },
+  Array<string> | null
+> {
   // base case, entire cell array is collapsed.
   if (cells.every((c) => c.count() === 1)) {
     // return cells.map((c) => c.keys().next().value!);
@@ -344,11 +373,13 @@ function* WaveFunctionGenerateWithBacktracking(
 
           cells[y * width + x].clear();
           cells[y * width + x].set(tile, true);
+          yield { x, y, tile: inverseTileMap.get(tile)! };
 
           // propagate the effects of the removal
           if (
             !propagateRemoval(
               tiles,
+              inverseTileMap,
               bitsetSize,
               width,
               height,
@@ -360,18 +391,12 @@ function* WaveFunctionGenerateWithBacktracking(
           ) {
             // placing this tile was unsatisfiable, restore the previous state
             cells[y * width + x] = backup;
+            yield { x, y, tile: null };
             continue;
           }
 
-          if (recursionDepth % 100 === 0) {
-            yield cells.map(
-              (c) =>
-                new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
-            );
-          }
-
           // recurse
-          const ret = yield* WaveFunctionGenerateInternal(
+          const ret = yield* WaveFunctionGenerateWithBacktracking(
             recursionDepth + 1,
             tiles,
             tilemap,
@@ -386,6 +411,7 @@ function* WaveFunctionGenerateWithBacktracking(
 
           if (ret === null) {
             cells[y * width + x] = backup;
+            yield { x, y, tile: null };
             continue;
           }
 
@@ -454,7 +480,10 @@ export function* gen(
   width: number,
   height: number,
   seed: number
-): Generator<Array<Set<string>>, Array<string> | null> {
+): Generator<
+  { x: number; y: number; tile: string | null },
+  Array<string> | null
+> {
   // Create support cache instance
   const cache = new SupportCache();
 
@@ -493,8 +522,9 @@ export function* gen(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (
-        !propagateRemoval(
+        !(yield* propagateRemoval(
           newTiles,
+          inverseTileMap,
           bitsetSize,
           width,
           height,
@@ -502,7 +532,7 @@ export function* gen(
           x,
           y,
           cache
-        )
+        ))
       ) {
         console.log("tiles are unsat");
         return null;
@@ -510,10 +540,12 @@ export function* gen(
     }
   }
 
-  // Yield initial state so the UI can see basically an empty grid
-  yield cells.map(
-    (c) => new Set(Array.from(c.keys()).map((i) => inverseTileMap.get(i)!))
-  );
+  // yield all cells as null initially to reset ui
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      yield { x, y, tile: null };
+    }
+  }
 
   const result = yield* WaveFunctionGenerateInternalWithResetting(
     0,
