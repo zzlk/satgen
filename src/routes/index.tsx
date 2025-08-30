@@ -162,10 +162,6 @@ export default function () {
           tile: string | null;
         };
 
-        console.log(
-          `Tile update: x=${tileUpdate.x}, y=${tileUpdate.y}, tile=${tileUpdate.tile}`
-        );
-
         // Update the current state based on the tile update
         setCurrentSynthesisState((prevState) => {
           if (!prevState) return prevState;

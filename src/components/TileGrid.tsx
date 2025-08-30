@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useRef, useEffect, useMemo, useCallback } from "react";
 
 interface TileGridProps {
   state: Array<Set<string>> | null;
@@ -10,129 +10,7 @@ interface TileGridProps {
   iteration: number;
 }
 
-// Simple tile cell component without complex memoization
-const TileCell: React.FC<{
-  cellPossibilities: Set<string>;
-  tileWidth: number;
-  tileHeight: number;
-  tileLookup: Map<string, any>;
-  maxPossibilities: number;
-  x: number;
-  y: number;
-}> = ({
-  cellPossibilities,
-  tileWidth,
-  tileHeight,
-  tileLookup,
-  maxPossibilities,
-  x,
-  y,
-}) => {
-  const cellContent = useMemo(() => {
-    if (cellPossibilities.size === 0) {
-      // Empty cell - render red X on black background
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      if (ctx) {
-        canvas.width = tileWidth;
-        canvas.height = tileHeight;
-
-        // Fill with black background
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, tileWidth, tileHeight);
-
-        // Draw red X
-        ctx.strokeStyle = "#FF0000";
-        ctx.lineWidth = Math.max(2, Math.min(tileWidth, tileHeight) / 16);
-        ctx.beginPath();
-        ctx.moveTo(tileWidth * 0.2, tileHeight * 0.2);
-        ctx.lineTo(tileWidth * 0.8, tileHeight * 0.8);
-        ctx.moveTo(tileWidth * 0.8, tileHeight * 0.2);
-        ctx.lineTo(tileWidth * 0.2, tileHeight * 0.8);
-        ctx.stroke();
-
-        return canvas.toDataURL("image/png");
-      }
-    } else if (cellPossibilities.size === 1) {
-      // Collapsed cell - return the single tile's data URL
-      const tileId = Array.from(cellPossibilities)[0];
-      const tile = tileLookup.get(tileId);
-      if (tile) {
-        return tile.dataUrl;
-      }
-    } else {
-      // Uncertain cell - render based on number of possibilities
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      if (ctx) {
-        canvas.width = tileWidth;
-        canvas.height = tileHeight;
-
-        // Create gradient based on number of possibilities
-        const possibilityRatio = cellPossibilities.size / maxPossibilities;
-
-        // Color from purple (many possibilities) to blue (few possibilities)
-        const hue = 240 + possibilityRatio * 60; // 240 (blue) to 300 (purple)
-        const saturation = 70;
-        const lightness = 60 - possibilityRatio * 20; // 60 to 40
-
-        const gradient = ctx.createLinearGradient(0, 0, tileWidth, tileHeight);
-        gradient.addColorStop(0, `hsl(${hue}, ${saturation}%, ${lightness}%)`);
-        gradient.addColorStop(
-          1,
-          `hsl(${hue}, ${saturation}%, ${lightness - 10}%)`
-        );
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, tileWidth, tileHeight);
-
-        // Add possibility count
-        ctx.fillStyle = "#FFFFFF";
-        ctx.font = `bold ${Math.min(tileWidth, tileHeight) / 4}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(
-          cellPossibilities.size.toString(),
-          tileWidth / 2,
-          tileHeight / 2
-        );
-
-        // Add border
-        ctx.strokeStyle = `hsl(${hue}, ${saturation}%, ${lightness - 20}%)`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(0, 0, tileWidth, tileHeight);
-
-        return canvas.toDataURL("image/png");
-      }
-    }
-
-    return null;
-  }, [cellPossibilities, tileWidth, tileHeight, tileLookup, maxPossibilities]);
-
-  if (!cellContent) {
-    return null;
-  }
-
-  return (
-    <img
-      src={cellContent}
-      alt={`Tile at (${x}, ${y})`}
-      style={{
-        width: tileWidth,
-        height: tileHeight,
-        display: "block",
-        position: "absolute",
-        left: x * tileWidth,
-        top: y * tileHeight,
-        imageRendering: "pixelated", // For better pixel art display
-      }}
-    />
-  );
-};
-
-// Simple tile grid component
+// Canvas-based tile grid component for better performance
 const TileGrid: React.FC<TileGridProps> = ({
   state,
   width,
@@ -142,9 +20,8 @@ const TileGrid: React.FC<TileGridProps> = ({
   enhancedTiles,
   iteration,
 }) => {
-  if (!state || state.length === 0) {
-    return null;
-  }
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tileImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Create a stable tile lookup map
   const tileLookup = useMemo(() => {
@@ -172,6 +49,176 @@ const TileGrid: React.FC<TileGridProps> = ({
   const totalWidth = width * scaledTileWidth;
   const totalHeight = height * scaledTileHeight;
 
+  // Preload tile images for better performance
+  const preloadTileImages = useCallback(async () => {
+    const promises: Promise<void>[] = [];
+
+    for (const tile of enhancedTiles) {
+      if (!tileImageCache.current.has(tile.id)) {
+        const img = new Image();
+        const promise = new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () =>
+            reject(new Error(`Failed to load tile: ${tile.id}`));
+        });
+        img.src = tile.dataUrl;
+        tileImageCache.current.set(tile.id, img);
+        promises.push(promise);
+      }
+    }
+
+    await Promise.all(promises);
+  }, [enhancedTiles]);
+
+  // Render a single cell to canvas
+  const renderCell = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      cellPossibilities: Set<string>
+    ) => {
+      const drawX = x * scaledTileWidth;
+      const drawY = y * scaledTileHeight;
+
+      if (cellPossibilities.size === 0) {
+        // Empty cell - render red X on black background
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(drawX, drawY, scaledTileWidth, scaledTileHeight);
+
+        // Draw red X
+        ctx.strokeStyle = "#FF0000";
+        ctx.lineWidth = Math.max(
+          2,
+          Math.min(scaledTileWidth, scaledTileHeight) / 16
+        );
+        ctx.beginPath();
+        ctx.moveTo(
+          drawX + scaledTileWidth * 0.2,
+          drawY + scaledTileHeight * 0.2
+        );
+        ctx.lineTo(
+          drawX + scaledTileWidth * 0.8,
+          drawY + scaledTileHeight * 0.8
+        );
+        ctx.moveTo(
+          drawX + scaledTileWidth * 0.8,
+          drawY + scaledTileHeight * 0.2
+        );
+        ctx.lineTo(
+          drawX + scaledTileWidth * 0.2,
+          drawY + scaledTileHeight * 0.8
+        );
+        ctx.stroke();
+      } else if (cellPossibilities.size === 1) {
+        // Collapsed cell - draw the single tile
+        const tileId = Array.from(cellPossibilities)[0];
+        const tileImg = tileImageCache.current.get(tileId);
+        if (tileImg) {
+          ctx.drawImage(
+            tileImg,
+            drawX,
+            drawY,
+            scaledTileWidth,
+            scaledTileHeight
+          );
+        }
+      } else {
+        // Uncertain cell - render based on number of possibilities
+        // Create gradient based on number of possibilities
+        const possibilityRatio = cellPossibilities.size / maxPossibilities;
+
+        // Color from purple (many possibilities) to blue (few possibilities)
+        const hue = 240 + possibilityRatio * 60; // 240 (blue) to 300 (purple)
+        const saturation = 70;
+        const lightness = 60 - possibilityRatio * 20; // 60 to 40
+
+        const gradient = ctx.createLinearGradient(
+          drawX,
+          drawY,
+          drawX + scaledTileWidth,
+          drawY + scaledTileHeight
+        );
+        gradient.addColorStop(0, `hsl(${hue}, ${saturation}%, ${lightness}%)`);
+        gradient.addColorStop(
+          1,
+          `hsl(${hue}, ${saturation}%, ${lightness - 10}%)`
+        );
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(drawX, drawY, scaledTileWidth, scaledTileHeight);
+
+        // Add possibility count
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = `bold ${
+          Math.min(scaledTileWidth, scaledTileHeight) / 4
+        }px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          cellPossibilities.size.toString(),
+          drawX + scaledTileWidth / 2,
+          drawY + scaledTileHeight / 2
+        );
+
+        // Add border
+        ctx.strokeStyle = `hsl(${hue}, ${saturation}%, ${lightness - 20}%)`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(drawX, drawY, scaledTileWidth, scaledTileHeight);
+      }
+    },
+    [scaledTileWidth, scaledTileHeight, maxPossibilities]
+  );
+
+  // Render the entire grid to canvas
+  const renderGrid = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !state || state.length === 0) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Clear the canvas
+    ctx.clearRect(0, 0, totalWidth, totalHeight);
+
+    // Render each cell
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cellIndex = y * width + x;
+        const cellPossibilities = state[cellIndex];
+        renderCell(ctx, x, y, cellPossibilities);
+      }
+    }
+  }, [state, width, height, totalWidth, totalHeight, renderCell]);
+
+  // Initialize canvas and preload images
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Set canvas dimensions
+    canvas.width = totalWidth;
+    canvas.height = totalHeight;
+
+    // Preload images and then render
+    preloadTileImages()
+      .then(() => {
+        renderGrid();
+      })
+      .catch(console.error);
+  }, [totalWidth, totalHeight, preloadTileImages, renderGrid]);
+
+  // Re-render when state changes
+  useEffect(() => {
+    if (state && state.length > 0) {
+      renderGrid();
+    }
+  }, [state, renderGrid]);
+
+  if (!state || state.length === 0) {
+    return null;
+  }
+
   return (
     <div
       style={{
@@ -182,7 +229,7 @@ const TileGrid: React.FC<TileGridProps> = ({
         width: "100%",
       }}
     >
-      {/* Container for the tile grid */}
+      {/* Canvas container */}
       <div
         style={{
           width: totalWidth,
@@ -193,26 +240,15 @@ const TileGrid: React.FC<TileGridProps> = ({
           boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
         }}
       >
-        {/* Render each cell as a separate img element */}
-        {Array.from({ length: height }, (_, y) =>
-          Array.from({ length: width }, (_, x) => {
-            const cellIndex = y * width + x;
-            const cellPossibilities = state[cellIndex];
-
-            return (
-              <TileCell
-                key={`${x}-${y}`}
-                cellPossibilities={cellPossibilities}
-                tileWidth={scaledTileWidth}
-                tileHeight={scaledTileHeight}
-                tileLookup={tileLookup}
-                maxPossibilities={maxPossibilities}
-                x={x}
-                y={y}
-              />
-            );
-          })
-        )}
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: totalWidth,
+            height: totalHeight,
+            display: "block",
+            imageRendering: "pixelated", // For better pixel art display
+          }}
+        />
       </div>
 
       {/* Iteration overlay */}
