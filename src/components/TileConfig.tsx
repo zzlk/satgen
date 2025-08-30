@@ -1,5 +1,3 @@
-import React from "react";
-
 interface TileConfigProps {
   tileWidth: number;
   setTileWidth: (width: number) => void;

@@ -126,39 +126,3 @@ export function processImageIntoTiles(
     img.src = imageUrl;
   });
 }
-
-/**
- * Validates tile dimensions
- * @param width - Tile width in pixels
- * @param height - Tile height in pixels
- * @returns True if dimensions are valid
- */
-export function validateTileDimensions(width: number, height: number): boolean {
-  return (
-    width > 0 &&
-    height > 0 &&
-    Number.isInteger(width) &&
-    Number.isInteger(height)
-  );
-}
-
-/**
- * Calculates the number of tiles that will be generated for given image and tile dimensions
- * @param imageWidth - Original image width
- * @param imageHeight - Original image height
- * @param tileWidth - Tile width
- * @param tileHeight - Tile height
- * @returns Object with tile counts and dimensions
- */
-export function calculateTileCount(
-  imageWidth: number,
-  imageHeight: number,
-  tileWidth: number,
-  tileHeight: number
-): { tilesX: number; tilesY: number; totalTiles: number } {
-  const tilesX = Math.ceil(imageWidth / tileWidth);
-  const tilesY = Math.ceil(imageHeight / tileHeight);
-  const totalTiles = tilesX * tilesY;
-
-  return { tilesX, tilesY, totalTiles };
-}

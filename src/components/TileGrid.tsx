@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useCallback } from "react";
+import { useRef, useEffect, useMemo, useCallback } from "react";
 
 interface TileGridProps {
   state: Array<Set<string>> | null;
@@ -11,7 +11,7 @@ interface TileGridProps {
 }
 
 // Canvas-based tile grid component for better performance
-const TileGrid: React.FC<TileGridProps> = ({
+const TileGrid = ({
   state,
   width,
   height,
@@ -19,7 +19,7 @@ const TileGrid: React.FC<TileGridProps> = ({
   tileHeight,
   enhancedTiles,
   iteration,
-}) => {
+}: TileGridProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
