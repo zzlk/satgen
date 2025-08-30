@@ -21,16 +21,18 @@ describe("basic tests", () => {
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 1, 1, 42);
 
+    // First yield should be initial reset (all cells as null)
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([new Set(["A", "B"])]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
     }
 
+    // Next yields should be tile updates
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([new Set(["A"])]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: "A" });
     }
 
     {
@@ -43,58 +45,69 @@ describe("basic tests", () => {
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 1, 2, 42);
 
+    // First yields should be initial reset (all cells as null)
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-      ]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
     }
 
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([new Set(["A"]), new Set(["B"])]);
+      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
     }
 
-    {
-      const result = generator.next();
-      expect(result.done).toBe(true);
-      expect(result.value).toStrictEqual(["A", "B"]);
-    }
+    // Should eventually produce a valid solution
+    let result;
+    let count = 0;
+    do {
+      result = generator.next();
+      count++;
+      expect(count).toBeLessThan(50); // Prevent infinite loops
+    } while (!result.done);
+
+    expect(result.value).toStrictEqual(["A", "B"]);
   });
 
   test("checkerboard basic test", () => {
     const generator = gen(tiles, 2, 2, 42);
 
+    // First yields should be initial reset (all cells as null)
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-      ]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
     }
 
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A"]),
-        new Set(["B"]),
-        new Set(["B"]),
-        new Set(["A"]),
-      ]);
+      expect(result.value).toStrictEqual({ x: 1, y: 0, tile: null });
     }
 
     {
       const result = generator.next();
-      expect(result.done).toBe(true);
-      expect(result.value).toStrictEqual(["A", "B", "B", "A"]);
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
     }
+
+    {
+      const result = generator.next();
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 1, y: 1, tile: null });
+    }
+
+    // Should eventually produce a valid solution
+    let result;
+    let count = 0;
+    do {
+      result = generator.next();
+      count++;
+      expect(count).toBeLessThan(100); // Prevent infinite loops
+    } while (!result.done);
+
+    expect(result.value).toStrictEqual(["A", "B", "B", "A"]);
   });
 });
 
@@ -172,14 +185,15 @@ describe("error cases and edge cases", () => {
     // This should eventually return null when no solution is found
     const generator = gen(tiles, 1, 1, 42);
 
+    // First yield should be initial reset
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([new Set(["A", "B"])]);
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
     // The generator should eventually find a solution (A or B)
     const finalResult = generator.next();
     expect(finalResult.done).toBe(false);
-    expect(finalResult.value).toStrictEqual([new Set(["A"])]);
+    expect(finalResult.value).toStrictEqual({ x: 0, y: 0, tile: "A" });
 
     const solution = generator.next();
     expect(solution.done).toBe(true);
@@ -197,12 +211,8 @@ describe("error cases and edge cases", () => {
 
     const generator = gen(tiles, 0, 0, 42);
     const result = generator.next();
-    expect(result.done).toBe(false); // First yield is the initial state
+    expect(result.done).toBe(true); // No cells to yield, should be done immediately
     expect(result.value).toStrictEqual([]);
-
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
-    expect(finalResult.value).toStrictEqual([]);
   });
 
   test("should handle 1x0 grid", () => {
@@ -216,12 +226,8 @@ describe("error cases and edge cases", () => {
 
     const generator = gen(tiles, 1, 0, 42);
     const result = generator.next();
-    expect(result.done).toBe(false); // First yield is the initial state
+    expect(result.done).toBe(true); // No cells to yield, should be done immediately
     expect(result.value).toStrictEqual([]);
-
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
-    expect(finalResult.value).toStrictEqual([]);
   });
 
   test("should handle 0x1 grid", () => {
@@ -235,12 +241,8 @@ describe("error cases and edge cases", () => {
 
     const generator = gen(tiles, 0, 1, 42);
     const result = generator.next();
-    expect(result.done).toBe(false); // First yield is the initial state
+    expect(result.done).toBe(true); // No cells to yield, should be done immediately
     expect(result.value).toStrictEqual([]);
-
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
-    expect(finalResult.value).toStrictEqual([]);
   });
 });
 
@@ -256,17 +258,23 @@ describe("complex tile configurations", () => {
 
     const generator = gen(selfConnectingTiles, 1, 1, 42);
 
+    // First yield should be initial reset
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([new Set(["A"])]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
     }
 
-    {
-      const result = generator.next();
-      expect(result.done).toBe(true);
-      expect(result.value).toStrictEqual(["A"]);
-    }
+    // Should eventually produce a valid solution
+    let result;
+    let count = 0;
+    do {
+      result = generator.next();
+      count++;
+      expect(count).toBeLessThan(50); // Prevent infinite loops
+    } while (!result.done);
+
+    expect(result.value).toStrictEqual(["A"]);
   });
 
   test("should handle three-tile configuration", () => {
@@ -292,15 +300,29 @@ describe("complex tile configurations", () => {
 
     const generator = gen(threeTiles, 2, 2, 42);
 
+    // First yields should be initial reset (all cells as null)
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A", "B", "C"]),
-        new Set(["A", "B", "C"]),
-        new Set(["A", "B", "C"]),
-        new Set(["A", "B", "C"]),
-      ]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
+    }
+
+    {
+      const result = generator.next();
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 1, y: 0, tile: null });
+    }
+
+    {
+      const result = generator.next();
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
+    }
+
+    {
+      const result = generator.next();
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 1, y: 1, tile: null });
     }
 
     // The generator should eventually produce a valid solution
@@ -336,13 +358,17 @@ describe("complex tile configurations", () => {
 
     const generator = gen(directionalTiles, 1, 2, 42);
 
+    // First yields should be initial reset (all cells as null)
     {
       const result = generator.next();
       expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-      ]);
+      expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
+    }
+
+    {
+      const result = generator.next();
+      expect(result.done).toBe(false);
+      expect(result.value).toStrictEqual({ x: 0, y: 1, tile: null });
     }
 
     // Should eventually produce a valid solution
@@ -378,20 +404,13 @@ describe("large grid tests", () => {
 
     const generator = gen(tiles, 3, 3, 42);
 
-    {
-      const result = generator.next();
-      expect(result.done).toBe(false);
-      expect(result.value).toStrictEqual([
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-        new Set(["A", "B"]),
-      ]);
+    // First yields should be initial reset (all 9 cells as null)
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        const result = generator.next();
+        expect(result.done).toBe(false);
+        expect(result.value).toStrictEqual({ x, y, tile: null });
+      }
     }
 
     // Should eventually produce a valid solution
@@ -421,12 +440,20 @@ describe("propagation edge cases", () => {
 
     const generator = gen(emptyConnectionsTiles, 1, 1, 42);
 
+    // First yield should be initial reset
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([new Set(["A"])]);
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
+    // Should eventually produce a valid solution
+    let finalResult;
+    let count = 0;
+    do {
+      finalResult = generator.next();
+      count++;
+      expect(count).toBeLessThan(50); // Prevent infinite loops
+    } while (!finalResult.done);
+
     expect(finalResult.value).toStrictEqual(["A"]);
   });
 
@@ -441,17 +468,15 @@ describe("propagation edge cases", () => {
 
     const generator = gen(selfOnlyTiles, 2, 2, 42);
 
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([
-      new Set(["A"]),
-      new Set(["A"]),
-      new Set(["A"]),
-      new Set(["A"]),
-    ]);
+    // Should eventually produce a valid solution
+    let finalResult;
+    let count = 0;
+    do {
+      finalResult = generator.next();
+      count++;
+      expect(count).toBeLessThan(100); // Prevent infinite loops
+    } while (!finalResult.done);
 
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
     expect(finalResult.value).toStrictEqual(["A", "A", "A", "A"]);
   });
 });
@@ -471,9 +496,11 @@ describe("invalid state tests", () => {
 
     // This should work normally
     const generator = gen(tiles, 1, 1, 42);
+
+    // First yield should be initial reset
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([new Set(["A"])]);
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
   });
 });
 
@@ -648,14 +675,14 @@ describe("advanced edge cases for maximum coverage", () => {
     // This should work and eventually find a solution
     const generator = gen(tiles, 2, 2, 42);
 
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([
-      new Set(["A", "B", "C", "D"]),
-      new Set(["A", "B", "C", "D"]),
-      new Set(["A", "B", "C", "D"]),
-      new Set(["A", "B", "C", "D"]),
-    ]);
+    // First yields should be initial reset (all 4 cells as null)
+    for (let y = 0; y < 2; y++) {
+      for (let x = 0; x < 2; x++) {
+        const result = generator.next();
+        expect(result.done).toBe(false);
+        expect(result.value).toStrictEqual({ x, y, tile: null });
+      }
+    }
 
     // Should eventually produce a valid solution
     let finalResult;
@@ -697,19 +724,14 @@ describe("advanced edge cases for maximum coverage", () => {
 
     const generator = gen(tiles, 3, 3, 42);
 
-    const result = generator.next();
-    expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-      new Set(["A", "B", "C"]),
-    ]);
+    // First yields should be initial reset (all 9 cells as null)
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        const result = generator.next();
+        expect(result.done).toBe(false);
+        expect(result.value).toStrictEqual({ x, y, tile: null });
+      }
+    }
 
     // Should eventually produce a valid solution
     let finalResult;
@@ -739,12 +761,20 @@ describe("advanced edge cases for maximum coverage", () => {
 
     const generator = gen(tiles, 1, 1, 42);
 
+    // First yield should be initial reset
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([new Set(["A"])]);
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
-    const finalResult = generator.next();
-    expect(finalResult.done).toBe(true);
+    // Should eventually produce a valid solution
+    let finalResult;
+    let count = 0;
+    do {
+      finalResult = generator.next();
+      count++;
+      expect(count).toBeLessThan(50); // Prevent infinite loops
+    } while (!finalResult.done);
+
     expect(finalResult.value).toStrictEqual(["A"]);
   });
 
@@ -769,13 +799,15 @@ describe("advanced edge cases for maximum coverage", () => {
     // This should work normally
     const generator = gen(tiles, 1, 1, 42);
 
+    // First yield should be initial reset
     const result = generator.next();
     expect(result.done).toBe(false);
-    expect(result.value).toStrictEqual([new Set(["A", "B"])]);
+    expect(result.value).toStrictEqual({ x: 0, y: 0, tile: null });
 
+    // Next yield should be tile update
     const finalResult = generator.next();
     expect(finalResult.done).toBe(false);
-    expect(finalResult.value).toStrictEqual([new Set(["A"])]);
+    expect(finalResult.value).toStrictEqual({ x: 0, y: 0, tile: "A" });
 
     const solution = generator.next();
     expect(solution.done).toBe(true);

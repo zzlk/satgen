@@ -139,6 +139,13 @@ export default function () {
       let result: string[] | null = null;
       let iteration = 0;
 
+      // Initialize the synthesis state with all tiles as possibilities
+      const initialState: Array<Set<string>> = [];
+      for (let i = 0; i < targetWidth * targetHeight; i++) {
+        initialState.push(new Set(enhancedTiles.map((tile) => tile.id)));
+      }
+      setCurrentSynthesisState(initialState);
+
       // Process the generator
       while (true) {
         const next = generator.next();
@@ -148,9 +155,35 @@ export default function () {
           break;
         }
 
-        // Update state for the new TileGrid component
-        const currentState = next.value;
-        setCurrentSynthesisState(currentState);
+        // Handle individual tile updates
+        const tileUpdate = next.value as {
+          x: number;
+          y: number;
+          tile: string | null;
+        };
+
+        console.log(
+          `Tile update: x=${tileUpdate.x}, y=${tileUpdate.y}, tile=${tileUpdate.tile}`
+        );
+
+        // Update the current state based on the tile update
+        setCurrentSynthesisState((prevState) => {
+          if (!prevState) return prevState;
+
+          const newState = [...prevState];
+          const index = tileUpdate.y * targetWidth + tileUpdate.x;
+
+          if (tileUpdate.tile === null) {
+            // Reset to all possibilities
+            newState[index] = new Set(enhancedTiles.map((tile) => tile.id));
+          } else {
+            // Set to specific tile
+            newState[index] = new Set([tileUpdate.tile]);
+          }
+
+          return newState;
+        });
+
         setCurrentIteration(iteration);
 
         await new Promise((resolve) => setTimeout(resolve, sleepTime));
