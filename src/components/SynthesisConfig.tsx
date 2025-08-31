@@ -10,6 +10,7 @@ interface SynthesisConfigProps {
   setSynthesisSeed: (seed: number) => void;
   isSynthesizing: boolean;
   onSynthesize: (targetWidth?: number, targetHeight?: number) => void;
+  onStopSynthesis: () => void;
   onClearState: () => void;
 }
 
@@ -22,6 +23,7 @@ export default function SynthesisConfig({
   setSynthesisSeed,
   isSynthesizing,
   onSynthesize,
+  onStopSynthesis,
   onClearState,
 }: SynthesisConfigProps) {
   // Local state for width and height inputs
@@ -117,13 +119,34 @@ export default function SynthesisConfig({
           </div>
         </div>
 
-        <button
-          onClick={handleSynthesize}
-          disabled={isSynthesizing}
-          className={styles.synthesizeButton}
-        >
-          {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
-        </button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            onClick={handleSynthesize}
+            disabled={isSynthesizing}
+            className={styles.synthesizeButton}
+          >
+            {isSynthesizing ? "Synthesizing..." : "Synthesize Image"}
+          </button>
+
+          {isSynthesizing && (
+            <button
+              onClick={onStopSynthesis}
+              className={styles.stopButton}
+              style={{
+                padding: "12px 16px",
+                background: "#dc3545",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "500",
+              }}
+            >
+              Stop Synthesis
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -25,6 +25,7 @@ export default function () {
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
   const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const shouldStopSynthesisRef = useRef(false);
 
   // Canvas-based approach
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -153,6 +154,10 @@ export default function () {
     }
   };
 
+  const handleStopSynthesis = useCallback(() => {
+    shouldStopSynthesisRef.current = true;
+  }, []);
+
   const handleSynthesize = async (
     targetWidth?: number,
     targetHeight?: number
@@ -167,6 +172,7 @@ export default function () {
     const finalHeight = targetHeight ?? synthesizeHeight;
 
     setIsSynthesizing(true);
+    shouldStopSynthesisRef.current = false;
 
     // Initialize canvas for the new synthesis
     initializeCanvas(finalWidth, finalHeight);
@@ -188,6 +194,12 @@ export default function () {
 
       // Process the generator
       while (true) {
+        // Check if synthesis should be stopped
+        if (shouldStopSynthesisRef.current) {
+          console.log("Synthesis stopped by user");
+          break;
+        }
+
         const next = generator.next();
 
         if (next.done) {
@@ -263,6 +275,7 @@ export default function () {
                 setSynthesisSeed={setSynthesisSeed}
                 isSynthesizing={isSynthesizing}
                 onSynthesize={handleSynthesize}
+                onStopSynthesis={handleStopSynthesis}
                 onClearState={clearCanvas}
               />
 
