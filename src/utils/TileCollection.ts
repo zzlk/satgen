@@ -157,6 +157,43 @@ export class TileCollection {
           mergedBorders.west.delete(tile.id);
         }
 
+        // Check if any of the duplicate tiles were adjacent to each other in the source
+        // If so, add self-references for those boundaries
+        for (let i = 0; i < tiles.length; i++) {
+          for (let j = i + 1; j < tiles.length; j++) {
+            const tile1 = tiles[i];
+            const tile2 = tiles[j];
+
+            // Check if tiles were adjacent in the source image
+            const dx = Math.abs(tile1.x - tile2.x);
+            const dy = Math.abs(tile1.y - tile2.y);
+
+            if (dx === 1 && dy === 0) {
+              // Tiles were horizontally adjacent
+              if (tile1.x < tile2.x) {
+                // tile1 is west of tile2
+                mergedBorders.east.add(closestTile.id);
+                mergedBorders.west.add(closestTile.id);
+              } else {
+                // tile2 is west of tile1
+                mergedBorders.east.add(closestTile.id);
+                mergedBorders.west.add(closestTile.id);
+              }
+            } else if (dx === 0 && dy === 1) {
+              // Tiles were vertically adjacent
+              if (tile1.y < tile2.y) {
+                // tile1 is north of tile2
+                mergedBorders.south.add(closestTile.id);
+                mergedBorders.north.add(closestTile.id);
+              } else {
+                // tile2 is north of tile1
+                mergedBorders.south.add(closestTile.id);
+                mergedBorders.north.add(closestTile.id);
+              }
+            }
+          }
+        }
+
         // Create a new tile with merged borders
         const mergedTile = new Tile(
           closestTile.dataUrl,
