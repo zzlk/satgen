@@ -138,7 +138,10 @@ function* propagateRemoval(
   x: number,
   y: number,
   cache: SupportCache
-): Generator<{ x: number; y: number; tile: string | null }, boolean> {
+): Generator<
+  { x: number; y: number; tile: string | null },
+  { x: number; y: number } | null
+> {
   const backup = new Map<{ x: number; y: number }, Bitset>();
 
   const queue = new Array<{ x: number; y: number }>();
@@ -191,7 +194,7 @@ function* propagateRemoval(
 
         console.log("unsatisfiable at", x, y);
 
-        return false; // unsatisfiable
+        return { x, y };
 
       case 1:
         const tile = cells[y * width + x].keys().next().value;
@@ -217,7 +220,7 @@ function* propagateRemoval(
     }
   }
 
-  return true;
+  return null;
 }
 
 function* resetCells(
@@ -233,45 +236,56 @@ function* resetCells(
   cellsHeight: number
 ): Generator<{ x: number; y: number; tile: string | null }> {
   // reset all the cells within radius centered on {x, y} to be all possible tiles.
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const nx = x + dx;
-      const ny = y + dy;
 
-      if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
-        continue;
+  while (true) {
+    try {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+
+          if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
+            continue;
+          }
+
+          cells[ny * cellsWidth + nx] = Bitset.createFull(bitsetSize);
+          yield { x: nx, y: ny, tile: null };
+        }
       }
 
-      cells[ny * cellsWidth + nx] = Bitset.createFull(bitsetSize);
-      yield { x: nx, y: ny, tile: null };
-    }
-  }
+      // propagateremove on all tiles one radius larger.
+      for (let dy = -radius - 1; dy <= radius + 1; dy++) {
+        for (let dx = -radius - 1; dx <= radius + 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
 
-  // propagateremove on all tiles one radius larger.
-  for (let dy = -radius - 1; dy <= radius + 1; dy++) {
-    for (let dx = -radius - 1; dx <= radius + 1; dx++) {
-      const nx = x + dx;
-      const ny = y + dy;
+          if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
+            continue;
+          }
 
-      if (nx < 0 || nx >= cellsWidth || ny < 0 || ny >= cellsHeight) {
-        continue;
+          if (
+            (yield* propagateRemoval(
+              tiles,
+              inverseTileMap,
+              bitsetSize,
+              cellsWidth,
+              cellsHeight,
+              cells,
+              nx,
+              ny,
+              cache
+            )) !== null
+          ) {
+            throw "what..?";
+          }
+        }
       }
 
-      if (
-        !(yield* propagateRemoval(
-          tiles,
-          inverseTileMap,
-          bitsetSize,
-          cellsWidth,
-          cellsHeight,
-          cells,
-          nx,
-          ny,
-          cache
-        ))
-      ) {
-        throw "what..?";
-      }
+      return;
+    } catch (e) {
+      console.error(e);
+      radius += 1;
+      continue;
     }
   }
 }
@@ -290,6 +304,8 @@ function* WaveFunctionGenerateInternalWithResetting(
   cache: SupportCache
 ): Generator<{ x: number; y: number; tile: string | null }> {
   let iteration = -1;
+
+  let unsatTracker = [];
 
   while (true) {
     iteration = iteration + 1;
@@ -321,21 +337,36 @@ function* WaveFunctionGenerateInternalWithResetting(
     cells[y * width + x].set(tile, true);
     yield { x, y, tile: inverseTileMap.get(tile)! };
 
-    if (
-      !(yield* propagateRemoval(
-        tiles,
-        inverseTileMap,
-        bitsetSize,
-        width,
-        height,
-        cells,
-        x,
-        y,
-        cache
-      ))
-    ) {
+    const unsatAt = yield* propagateRemoval(
+      tiles,
+      inverseTileMap,
+      bitsetSize,
+      width,
+      height,
+      cells,
+      x,
+      y,
+      cache
+    );
+
+    if (unsatAt !== null) {
       // placing this tile was unsatisfiable, restore the previous state
       cells[y * width + x] = backup;
+      const radiusBooster = unsatTracker
+        .filter((unsat) => unsat.x === unsatAt.x && unsat.y === unsatAt.y)
+        .reduce((total, unsat) => total + 1, 0);
+
+      console.log(
+        "resetting at ",
+        x,
+        y,
+        "and",
+        unsatAt.x,
+        unsatAt.y,
+        "radius booster",
+        radiusBooster
+      );
+
       yield* resetCells(
         tiles,
         inverseTileMap,
@@ -343,12 +374,27 @@ function* WaveFunctionGenerateInternalWithResetting(
         bitsetSize,
         x,
         y,
-        resetRadius,
+        resetRadius + radiusBooster,
         cells,
         width,
         height
       );
-      console.log("unsat at ", x, y);
+
+      yield* resetCells(
+        tiles,
+        inverseTileMap,
+        cache,
+        bitsetSize,
+        unsatAt.x,
+        unsatAt.y,
+        resetRadius + radiusBooster,
+        cells,
+        width,
+        height
+      );
+
+      unsatTracker.push(unsatAt);
+
       continue;
     }
   }
@@ -398,7 +444,7 @@ function* WaveFunctionGenerateWithBacktracking(
 
           // propagate the effects of the removal
           if (
-            !propagateRemoval(
+            (yield* propagateRemoval(
               tiles,
               inverseTileMap,
               bitsetSize,
@@ -408,7 +454,7 @@ function* WaveFunctionGenerateWithBacktracking(
               x,
               y,
               cache
-            )
+            )) != null
           ) {
             // placing this tile was unsatisfiable, restore the previous state
             cells[y * width + x] = backup;
@@ -541,7 +587,7 @@ export function* gen(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (
-        !(yield* propagateRemoval(
+        (yield* propagateRemoval(
           newTiles,
           inverseTileMap,
           bitsetSize,
@@ -551,7 +597,7 @@ export function* gen(
           x,
           y,
           cache
-        ))
+        )) !== null
       ) {
         console.log("tiles are unsat");
         return null;
