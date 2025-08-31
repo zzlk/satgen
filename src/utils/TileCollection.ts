@@ -1,4 +1,5 @@
 import { Tile } from "./Tile";
+import type { TileBorders } from "./Tile";
 
 export class TileCollection {
   public readonly tiles: Tile[];
@@ -170,26 +171,12 @@ export class TileCollection {
 
             if (dx === 1 && dy === 0) {
               // Tiles were horizontally adjacent
-              if (tile1.x < tile2.x) {
-                // tile1 is west of tile2
-                mergedBorders.east.add(closestTile.id);
-                mergedBorders.west.add(closestTile.id);
-              } else {
-                // tile2 is west of tile1
-                mergedBorders.east.add(closestTile.id);
-                mergedBorders.west.add(closestTile.id);
-              }
+              mergedBorders.east.add(closestTile.id);
+              mergedBorders.west.add(closestTile.id);
             } else if (dx === 0 && dy === 1) {
               // Tiles were vertically adjacent
-              if (tile1.y < tile2.y) {
-                // tile1 is north of tile2
-                mergedBorders.south.add(closestTile.id);
-                mergedBorders.north.add(closestTile.id);
-              } else {
-                // tile2 is north of tile1
-                mergedBorders.south.add(closestTile.id);
-                mergedBorders.north.add(closestTile.id);
-              }
+              mergedBorders.south.add(closestTile.id);
+              mergedBorders.north.add(closestTile.id);
             }
           }
         }
@@ -251,6 +238,248 @@ export class TileCollection {
       this.tilesX,
       this.tilesY
     );
+  }
+
+  /**
+   * Merges this TileCollection with another TileCollection
+   * @param other - The TileCollection to merge with
+   * @returns New TileCollection with merged tiles and rules
+   */
+  mergeWith(other: TileCollection): TileCollection {
+    // Create a map of tiles by hash for efficient lookup
+    const thisTilesByHash = new Map<string, Tile>();
+    const otherTilesByHash = new Map<string, Tile>();
+
+    for (const tile of this.tiles) {
+      const hash = tile.getDataUrlHash();
+      thisTilesByHash.set(hash, tile);
+    }
+
+    for (const tile of other.tiles) {
+      const hash = tile.getDataUrlHash();
+      otherTilesByHash.set(hash, tile);
+    }
+
+    // Merge tiles, keeping the one closest to origin when duplicates exist
+    const mergedTiles: Tile[] = [];
+    const processedHashes = new Set<string>();
+
+    // Process all tiles from both collections
+    const allTiles = [...this.tiles, ...other.tiles];
+
+    for (const tile of allTiles) {
+      const hash = tile.getDataUrlHash();
+
+      if (processedHashes.has(hash)) {
+        continue; // Already processed this hash
+      }
+
+      const thisTile = thisTilesByHash.get(hash);
+      const otherTile = otherTilesByHash.get(hash);
+
+      if (thisTile && otherTile) {
+        // Both collections have this tile - merge them
+        const mergedTile = this.mergeDuplicateTilesInCollections(
+          thisTile,
+          otherTile
+        );
+        mergedTiles.push(mergedTile);
+      } else if (thisTile) {
+        // Only this collection has this tile
+        mergedTiles.push(thisTile);
+      } else if (otherTile) {
+        // Only other collection has this tile
+        mergedTiles.push(otherTile);
+      }
+
+      processedHashes.add(hash);
+    }
+
+    // Update border references to point to the correct merged tiles
+    const mergedTilesByHash = new Map<string, Tile>();
+    for (const tile of mergedTiles) {
+      const hash = tile.getDataUrlHash();
+      mergedTilesByHash.set(hash, tile);
+    }
+
+    // Update borders for all merged tiles
+    for (const tile of mergedTiles) {
+      const updatedBorders = {
+        north: new Set<string>(),
+        east: new Set<string>(),
+        south: new Set<string>(),
+        west: new Set<string>(),
+      };
+
+      // For each border direction, find the corresponding merged tile
+      for (const direction of ["north", "east", "south", "west"] as const) {
+        for (const borderId of tile.borders[direction]) {
+          // Find the original tile by ID
+          const originalTile =
+            this.getTileById(borderId) || other.getTileById(borderId);
+          if (originalTile) {
+            const borderHash = originalTile.getDataUrlHash();
+            const mergedBorderTile = mergedTilesByHash.get(borderHash);
+            if (mergedBorderTile) {
+              updatedBorders[direction].add(mergedBorderTile.id);
+            }
+          }
+        }
+      }
+
+      (tile as any).borders = updatedBorders;
+    }
+
+    // Ensure commutative rules (if A borders B, then B must border A)
+    this.ensureCommutativeRules(mergedTiles);
+
+    // Calculate new dimensions (use the larger of the two collections)
+    const newImageWidth = Math.max(this.imageWidth, other.imageWidth);
+    const newImageHeight = Math.max(this.imageHeight, other.imageHeight);
+    const newTilesX = Math.max(this.tilesX, other.tilesX);
+    const newTilesY = Math.max(this.tilesY, other.tilesY);
+
+    return new TileCollection(
+      mergedTiles,
+      mergedTiles.length,
+      newImageWidth,
+      newImageHeight,
+      newTilesX,
+      newTilesY
+    );
+  }
+
+  /**
+   * Merges two tiles with the same hash from different collections
+   * @param tile1 - First tile
+   * @param tile2 - Second tile
+   * @returns Merged tile
+   */
+  private mergeDuplicateTilesInCollections(tile1: Tile, tile2: Tile): Tile {
+    // Keep the tile closest to origin
+    const distance1 = Math.sqrt(tile1.x * tile1.x + tile1.y * tile1.y);
+    const distance2 = Math.sqrt(tile2.x * tile2.x + tile2.y * tile2.y);
+    const keptTile = distance1 <= distance2 ? tile1 : tile2;
+
+    // Merge border information from both tiles
+    const mergedBorders = {
+      north: new Set<string>(),
+      east: new Set<string>(),
+      south: new Set<string>(),
+      west: new Set<string>(),
+    };
+
+    // Collect all border information from both tiles
+    tile1.borders.north.forEach((id) => mergedBorders.north.add(id));
+    tile1.borders.east.forEach((id) => mergedBorders.east.add(id));
+    tile1.borders.south.forEach((id) => mergedBorders.south.add(id));
+    tile1.borders.west.forEach((id) => mergedBorders.west.add(id));
+
+    tile2.borders.north.forEach((id) => mergedBorders.north.add(id));
+    tile2.borders.east.forEach((id) => mergedBorders.east.add(id));
+    tile2.borders.south.forEach((id) => mergedBorders.south.add(id));
+    tile2.borders.west.forEach((id) => mergedBorders.west.add(id));
+
+    // Remove references to the duplicate tiles from the merged borders
+    mergedBorders.north.delete(tile1.id);
+    mergedBorders.east.delete(tile1.id);
+    mergedBorders.south.delete(tile1.id);
+    mergedBorders.west.delete(tile1.id);
+
+    mergedBorders.north.delete(tile2.id);
+    mergedBorders.east.delete(tile2.id);
+    mergedBorders.south.delete(tile2.id);
+    mergedBorders.west.delete(tile2.id);
+
+    // Check if the original tiles had self-borders and preserve them
+    // This handles the case where tiles from different collections can border themselves
+    if (
+      tile1.borders.north.has(tile1.id) ||
+      tile2.borders.north.has(tile2.id)
+    ) {
+      mergedBorders.north.add(keptTile.id);
+    }
+    if (tile1.borders.east.has(tile1.id) || tile2.borders.east.has(tile2.id)) {
+      mergedBorders.east.add(keptTile.id);
+    }
+    if (
+      tile1.borders.south.has(tile1.id) ||
+      tile2.borders.south.has(tile2.id)
+    ) {
+      mergedBorders.south.add(keptTile.id);
+    }
+    if (tile1.borders.west.has(tile1.id) || tile2.borders.west.has(tile2.id)) {
+      mergedBorders.west.add(keptTile.id);
+    }
+
+    // Create a new tile with merged borders
+    const mergedTile = new Tile(
+      keptTile.dataUrl,
+      keptTile.x,
+      keptTile.y,
+      keptTile.width,
+      keptTile.height,
+      this.tilesX,
+      this.tilesY,
+      undefined
+    );
+
+    // Replace the borders with merged borders
+    (mergedTile as any).borders = mergedBorders;
+
+    return mergedTile;
+  }
+
+  /**
+   * Ensures that border rules are commutative (if A borders B, then B must border A)
+   * @param tiles - Array of tiles to update
+   */
+  private ensureCommutativeRules(tiles: Tile[]): void {
+    // Create a map for quick tile lookup
+    const tilesById = new Map<string, Tile>();
+    for (const tile of tiles) {
+      tilesById.set(tile.id, tile);
+    }
+
+    // For each tile, ensure all its borders are commutative
+    for (const tile of tiles) {
+      for (const direction of ["north", "east", "south", "west"] as const) {
+        for (const borderId of tile.borders[direction]) {
+          const borderTile = tilesById.get(borderId);
+          if (borderTile) {
+            // Determine the opposite direction
+            const oppositeDirection = this.getOppositeDirection(direction);
+
+            // Ensure the border tile has this tile in its opposite direction
+            if (!borderTile.borders[oppositeDirection].has(tile.id)) {
+              (borderTile as any).borders[oppositeDirection].add(tile.id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Gets the opposite direction
+   * @param direction - Original direction
+   * @returns Opposite direction
+   */
+  private getOppositeDirection(
+    direction: keyof TileBorders
+  ): keyof TileBorders {
+    switch (direction) {
+      case "north":
+        return "south";
+      case "south":
+        return "north";
+      case "east":
+        return "west";
+      case "west":
+        return "east";
+      default:
+        return direction;
+    }
   }
 
   /**
