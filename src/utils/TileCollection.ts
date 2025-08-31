@@ -165,7 +165,8 @@ export class TileCollection {
           closestTile.width,
           closestTile.height,
           this.tilesX,
-          this.tilesY
+          this.tilesY,
+          undefined // No existingTileIds needed for merged tiles
         );
 
         // Replace the borders with merged borders
@@ -238,7 +239,8 @@ export class TileCollection {
         tile.width,
         tile.height,
         this.tilesX,
-        this.tilesY
+        this.tilesY,
+        undefined // No existingTileIds needed for enhanced tiles
       );
 
       // Copy existing borders

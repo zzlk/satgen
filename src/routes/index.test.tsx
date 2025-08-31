@@ -19,8 +19,8 @@ describe("Wave Function Collapse Integration", () => {
   test("should convert tiles to wave2 format correctly", () => {
     // Create mock tiles
     const tiles: Tile[] = [
-      new Tile("data:image/png;base64,mock1", 0, 0, 32, 32, 2, 2),
-      new Tile("data:image/png;base64,mock2", 1, 0, 32, 32, 2, 2),
+      new Tile("data:image/png;base64,mock1", 0, 0, 32, 32, 2, 2, undefined),
+      new Tile("data:image/png;base64,mock2", 1, 0, 32, 32, 2, 2, undefined),
     ];
 
     // Set up border connections manually

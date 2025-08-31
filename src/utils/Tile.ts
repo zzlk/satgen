@@ -21,7 +21,8 @@ export class Tile {
     width: number,
     height: number,
     tilesX: number,
-    tilesY: number
+    tilesY: number,
+    existingTileIds?: Set<string>
   ) {
     this.dataUrl = dataUrl;
     this.x = x;
@@ -29,7 +30,7 @@ export class Tile {
     this.width = width;
     this.height = height;
     this.id = this.generateId(x, y);
-    this.borders = this.calculateBorders(tilesX, tilesY);
+    this.borders = this.calculateBorders(tilesX, tilesY, existingTileIds);
   }
 
   /**
@@ -46,21 +47,54 @@ export class Tile {
    * Calculates the IDs of bordering tiles
    * @param tilesX - Total number of tiles in X direction
    * @param tilesY - Total number of tiles in Y direction
+   * @param existingTileIds - Set of tile IDs that actually exist (not pure black tiles)
    * @returns Object with bordering tile IDs
    */
-  private calculateBorders(tilesX: number, tilesY: number): TileBorders {
-    return {
-      north: this.y > 0 ? new Set([`tile_${this.x}_${this.y - 1}`]) : new Set(),
-      east:
-        this.x < tilesX - 1
-          ? new Set([`tile_${this.x + 1}_${this.y}`])
-          : new Set(),
-      south:
-        this.y < tilesY - 1
-          ? new Set([`tile_${this.x}_${this.y + 1}`])
-          : new Set(),
-      west: this.x > 0 ? new Set([`tile_${this.x - 1}_${this.y}`]) : new Set(),
+  private calculateBorders(
+    tilesX: number,
+    tilesY: number,
+    existingTileIds?: Set<string>
+  ): TileBorders {
+    const borders: TileBorders = {
+      north: new Set(),
+      east: new Set(),
+      south: new Set(),
+      west: new Set(),
     };
+
+    // North border
+    if (this.y > 0) {
+      const northTileId = `tile_${this.x}_${this.y - 1}`;
+      if (!existingTileIds || existingTileIds.has(northTileId)) {
+        borders.north.add(northTileId);
+      }
+    }
+
+    // East border
+    if (this.x < tilesX - 1) {
+      const eastTileId = `tile_${this.x + 1}_${this.y}`;
+      if (!existingTileIds || existingTileIds.has(eastTileId)) {
+        borders.east.add(eastTileId);
+      }
+    }
+
+    // South border
+    if (this.y < tilesY - 1) {
+      const southTileId = `tile_${this.x}_${this.y + 1}`;
+      if (!existingTileIds || existingTileIds.has(southTileId)) {
+        borders.south.add(southTileId);
+      }
+    }
+
+    // West border
+    if (this.x > 0) {
+      const westTileId = `tile_${this.x - 1}_${this.y}`;
+      if (!existingTileIds || existingTileIds.has(westTileId)) {
+        borders.west.add(westTileId);
+      }
+    }
+
+    return borders;
   }
 
   /**
@@ -232,6 +266,7 @@ export class Tile {
    * @param height - Tile height
    * @param tilesX - Total number of tiles in X direction
    * @param tilesY - Total number of tiles in Y direction
+   * @param existingTileIds - Optional set of tile IDs that actually exist (not pure black tiles)
    * @returns New Tile instance
    */
   static create(
@@ -241,8 +276,18 @@ export class Tile {
     width: number,
     height: number,
     tilesX: number,
-    tilesY: number
+    tilesY: number,
+    existingTileIds?: Set<string>
   ): Tile {
-    return new Tile(dataUrl, x, y, width, height, tilesX, tilesY);
+    return new Tile(
+      dataUrl,
+      x,
+      y,
+      width,
+      height,
+      tilesX,
+      tilesY,
+      existingTileIds
+    );
   }
 }
