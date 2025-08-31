@@ -8,6 +8,8 @@ interface SynthesisConfigProps {
   setSynthesizeHeight: (height: number) => void;
   synthesisSeed: number;
   setSynthesisSeed: (seed: number) => void;
+  resetRadius: number;
+  setResetRadius: (radius: number) => void;
   isSynthesizing: boolean;
   onSynthesize: (targetWidth?: number, targetHeight?: number) => void;
   onStopSynthesis: () => void;
@@ -21,6 +23,8 @@ export default function SynthesisConfig({
   setSynthesizeHeight,
   synthesisSeed,
   setSynthesisSeed,
+  resetRadius,
+  setResetRadius,
   isSynthesizing,
   onSynthesize,
   onStopSynthesis,
@@ -117,6 +121,20 @@ export default function SynthesisConfig({
               🎲
             </button>
           </div>
+        </div>
+
+        <div className={styles.inputGroup}>
+          <label className={styles.inputLabel}>Reset Radius</label>
+          <input
+            type="number"
+            value={resetRadius}
+            onChange={(e) =>
+              setResetRadius(Math.max(0, parseInt(e.target.value) || 0))
+            }
+            min="0"
+            className={styles.dimensionInput}
+            title="Radius around a failed tile placement to reset when backtracking. Larger values reset more area but may be slower."
+          />
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>

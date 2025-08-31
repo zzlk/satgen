@@ -285,6 +285,7 @@ function* WaveFunctionGenerateInternalWithResetting(
   width: number,
   height: number,
   seed: number,
+  resetRadius: number,
   cells: Array<Bitset>,
   cache: SupportCache
 ): Generator<{ x: number; y: number; tile: string | null }> {
@@ -342,7 +343,7 @@ function* WaveFunctionGenerateInternalWithResetting(
         bitsetSize,
         x,
         y,
-        6,
+        resetRadius,
         cells,
         width,
         height
@@ -499,7 +500,8 @@ export function* gen(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>,
   width: number,
   height: number,
-  seed: number
+  seed: number,
+  resetRadius: number = 5
 ): Generator<{ x: number; y: number; tile: string | null }> {
   // Create support cache instance
   const cache = new SupportCache();
@@ -566,6 +568,7 @@ export function* gen(
     width,
     height,
     seed,
+    resetRadius,
     cells,
     cache
   );

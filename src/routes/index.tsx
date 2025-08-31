@@ -24,6 +24,7 @@ export default function () {
   const [synthesizeWidth, setSynthesizeWidth] = useState<number>(10);
   const [synthesizeHeight, setSynthesizeHeight] = useState<number>(10);
   const [synthesisSeed, setSynthesisSeed] = useState<number>(0);
+  const [resetRadius, setResetRadius] = useState<number>(5);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const shouldStopSynthesisRef = useRef(false);
 
@@ -188,7 +189,13 @@ export default function () {
       const tileMap = convertTilesToWave2Format(enhancedTiles);
 
       // Use the gen function from wave2.ts
-      const generator = gen(tileMap, targetWidth, targetHeight, synthesisSeed);
+      const generator = gen(
+        tileMap,
+        targetWidth,
+        targetHeight,
+        synthesisSeed,
+        resetRadius
+      );
 
       let iteration = 0;
 
@@ -273,6 +280,8 @@ export default function () {
                 setSynthesizeHeight={setSynthesizeHeight}
                 synthesisSeed={synthesisSeed}
                 setSynthesisSeed={setSynthesisSeed}
+                resetRadius={resetRadius}
+                setResetRadius={setResetRadius}
                 isSynthesizing={isSynthesizing}
                 onSynthesize={handleSynthesize}
                 onStopSynthesis={handleStopSynthesis}
