@@ -1,6 +1,8 @@
 import { Tile } from "./Tile";
 import { TileCollection } from "./TileCollection";
 
+// TODO: calculate the frequency of tiles in the original image so that when we generate those tiles we can do it in the same proportion as they appear in the original
+
 function isPureBlackTile(
   imageData: Uint8ClampedArray,
   width: number,
@@ -250,9 +252,7 @@ export async function processImageIntoTiles(
   return new TileCollection(
     outputTiles,
     outputTiles.length,
-    imageWidth,
-    imageHeight,
-    tilesX,
-    tilesY
+    tileWidth,
+    tileHeight
   );
 }
