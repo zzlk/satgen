@@ -140,11 +140,24 @@ export default function () {
     setIsProcessing(true);
 
     try {
-      const result = await processImageIntoTiles({
-        imageUrl: previewUrl,
+      // load the image without using the canvas api, and get the image data
+      // as a raw Uint8ClampedArray
+      const image = new Image();
+      image.src = previewUrl;
+      image.onload = () => {
+        const imageData = new Uint8ClampedArray(image.width * image.height * 4);
+        imageData.set(new Uint8ClampedArray(image.data));
+      };
+
+ 
+      // process the image into tiles
+      const result = await processImageIntoTiles(
+        image.da
+        imageWidth,
+        imageHeight,
         tileWidth,
         tileHeight,
-      });
+      );
 
       setTileCollection(result.tiles);
     } catch (error) {

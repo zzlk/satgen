@@ -1,32 +1,5 @@
+import { Tile } from "./Tile";
 import { TileCollection } from "./TileCollection";
-
-export class Tile {
-  public readonly id: string;
-  public readonly imageData: ImageData;
-  public readonly x: number;
-  public readonly y: number;
-  public readonly width: number;
-  public readonly height: number;
-  public readonly borders: [Set<string>, Set<string>, Set<string>, Set<string>];
-
-  constructor(
-    tileId: string,
-    dataUrl: ImageData,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    borders: [Set<string>, Set<string>, Set<string>, Set<string>]
-  ) {
-    this.id = tileId;
-    this.imageData = dataUrl;
-    this.x = x;
-    this.y = y;
-    this.width = width;
-    this.height = height;
-    this.borders = borders;
-  }
-}
 
 function isPureBlackTile(
   imageData: ImageData,
@@ -60,238 +33,203 @@ function generateId() {
   return id;
 }
 
-export function processImageIntoTiles(
-  imageUrl: string,
+export function bitBlt(
+  source: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  destination: Uint8ClampedArray,
+  destinationWidth: number,
+  destinationHeight: number,
+
+  sourceX: number,
+  sourceY: number,
+
+  destinationX: number,
+  destinationY: number,
+
+  width: number,
+  height: number
+) {
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let srcX = sourceX + x;
+      let srcY = sourceY + y;
+
+      if (srcX < 0 || srcX >= sourceWidth || srcY < 0 || srcY >= sourceHeight) {
+        throw new Error("Invalid source coordinates", {
+          cause: { srcX, srcY },
+        });
+      }
+
+      let dstX = destinationX + x;
+      let dstY = destinationY + y;
+
+      if (
+        dstX < 0 ||
+        dstX >= destinationWidth ||
+        dstY < 0 ||
+        dstY >= destinationHeight
+      ) {
+        throw new Error("Invalid destination coordinates", {
+          cause: { dstX, dstY },
+        });
+      }
+
+      const sourceIndex = srcY * sourceWidth * 4 + srcX * 4;
+      const destinationIndex = dstY * destinationWidth * 4 + dstX * 4;
+
+      if (
+        sourceIndex >= source.length ||
+        destinationIndex >= destination.length
+      ) {
+        throw new Error("Invalid index", {
+          cause: { sourceIndex, destinationIndex },
+        });
+      }
+
+      destination[destinationIndex] = source[sourceIndex];
+      destination[destinationIndex + 1] = source[sourceIndex + 1];
+      destination[destinationIndex + 2] = source[sourceIndex + 2];
+      destination[destinationIndex + 3] = source[sourceIndex + 3];
+    }
+  }
+}
+
+export async function processImageIntoTiles(
+  imageData: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
   tileWidth: number,
   tileHeight: number
 ): Promise<TileCollection> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    throw new Error("Invalid image dimensions");
+  }
 
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (imageWidth % tileWidth !== 0 || imageHeight % tileHeight !== 0) {
+    throw new Error("Image dimensions must be divisible by tile dimensions");
+  }
 
-        if (!ctx) {
-          reject(new Error("Failed to get canvas context"));
-          return;
-        }
+  const tilesX = imageWidth / tileWidth;
+  const tilesY = imageHeight / tileHeight;
 
-        const imageWidth = img.width;
-        const imageHeight = img.height;
+  const tiles: {
+    tileId: string;
+    imageData: Uint8ClampedArray;
+  }[] = [];
 
-        if (imageWidth <= 0 || imageHeight <= 0) {
-          throw new Error("Invalid image dimensions");
-        }
+  for (let y = 0; y < tilesY; y++) {
+    for (let x = 0; x < tilesX; x++) {
+      const tileImageData = new Uint8ClampedArray(tileWidth * tileHeight * 4);
 
-        if (imageWidth % tileWidth !== 0 || imageHeight % tileHeight !== 0) {
-          throw new Error(
-            "Image dimensions must be divisible by tile dimensions"
-          );
-        }
+      const sourceX = x * tileWidth;
+      const sourceY = y * tileHeight;
 
-        const tilesX = imageWidth / tileWidth;
-        const tilesY = imageHeight / tileHeight;
+      bitBlt(
+        imageData,
+        imageWidth,
+        imageHeight,
+        tileImageData,
+        tileWidth,
+        tileHeight,
+        sourceX,
+        sourceY,
+        0,
+        0,
+        tileWidth,
+        tileHeight
+      );
 
-        const tiles: {
-          tileId: string;
-          imageData: ImageData;
-          hash: number;
-          x: number;
-          y: number;
-        }[] = [];
+      let tileId = Array.from(
+        new Uint8Array(await crypto.subtle.digest("SHA-256", tileImageData))
+      )
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 
-        const tileHashMap = new Map<
-          number,
-          {
-            tileId: string;
-            borderInfo: [Set<string>, Set<string>, Set<string>, Set<string>];
-          }[]
-        >();
+      tiles.push({
+        tileId,
+        imageData: tileImageData,
+      });
+    }
+  }
 
-        const DIRECTIONS = [
-          { dx: 0, dy: 1 },
-          { dx: 1, dy: 0 },
-          { dx: 0, dy: -1 },
-          { dx: -1, dy: 0 },
-        ];
+  // calculate border info
+  const DIRECTIONS = [
+    { dx: 0, dy: 1 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: -1 },
+    { dx: -1, dy: 0 },
+  ];
 
-        {
-          const tileIdMap = new Array(tilesX * tilesY)
-            .fill(null)
-            .map(() => generateId());
+  const borderInfo = new Map<
+    string,
+    [Set<string>, Set<string>, Set<string>, Set<string>]
+  >();
 
-          for (let y = 0; y < tilesY; y++) {
-            for (let x = 0; x < tilesX; x++) {
-              canvas.width = tileWidth;
-              canvas.height = tileHeight;
+  for (let x = 0; x < tilesX; x++) {
+    for (let y = 0; y < tilesY; y++) {
+      const tile = tiles[y * tilesX + x];
 
-              ctx.clearRect(0, 0, tileWidth, tileHeight);
-
-              const sourceX = x * tileWidth;
-              const sourceY = y * tileHeight;
-
-              const actualTileWidth = Math.min(tileWidth, imageWidth - sourceX);
-              const actualTileHeight = Math.min(
-                tileHeight,
-                imageHeight - sourceY
-              );
-
-              ctx.drawImage(
-                img,
-                sourceX,
-                sourceY,
-                actualTileWidth,
-                actualTileHeight,
-                0,
-                0,
-                actualTileWidth,
-                actualTileHeight
-              );
-
-              const imageData = ctx.getImageData(
-                0,
-                0,
-                actualTileWidth,
-                actualTileHeight
-              );
-
-              let hash = imageData.data.reduce((hash, pixel) => {
-                return (hash * 7 + pixel) & 0xffffffff;
-              }, 0);
-
-              // create border info
-              const borderInfo: [
-                Set<string>,
-                Set<string>,
-                Set<string>,
-                Set<string>
-              ] = [
-                new Set<string>(),
-                new Set<string>(),
-                new Set<string>(),
-                new Set<string>(),
-              ];
-
-              for (let i = 0; i < DIRECTIONS.length; i++) {
-                const { dx, dy } = DIRECTIONS[i];
-                const neighborX = x + dx;
-                const neighborY = y + dy;
-
-                if (
-                  neighborX < 0 ||
-                  neighborX >= tilesX ||
-                  neighborY < 0 ||
-                  neighborY >= tilesY
-                ) {
-                  continue;
-                }
-
-                borderInfo[i].add(tileIdMap[neighborY * tilesX + neighborX]);
-              }
-
-              tiles.push({
-                tileId: tileIdMap[y * tilesX + x],
-                imageData,
-                hash,
-                x,
-                y,
-              });
-
-              // add to hash map
-              if (tileHashMap.has(hash) === false) {
-                tileHashMap.set(hash, []);
-              }
-              tileHashMap
-                .get(hash)!
-                .push({ tileId: tileIdMap[y * tilesX + x], borderInfo });
-            }
-          }
-        }
-
-        const outputTiles: Tile[] = [];
-
-        // merge duplicates
-        for (const tile of tiles) {
-          const hash = tile.hash;
-          const duplicates = tileHashMap.get(hash)!;
-
-          if (duplicates.length === 1) {
-            outputTiles.push(
-              new Tile(
-                tile.tileId,
-                tile.imageData,
-                tile.x,
-                tile.y,
-                tileWidth,
-                tileHeight,
-                duplicates[0].borderInfo
-              )
-            );
-
-            continue;
-          }
-
-          if (duplicates.length > 1) {
-            // merge border infos
-            const borderInfo: [
-              Set<string>,
-              Set<string>,
-              Set<string>,
-              Set<string>
-            ] = [
-              new Set<string>(),
-              new Set<string>(),
-              new Set<string>(),
-              new Set<string>(),
-            ];
-
-            for (const duplicate of duplicates) {
-              for (let i = 0; i < borderInfo.length; i++) {
-                for (const id of duplicate.borderInfo[i]) {
-                  borderInfo[i].add(id);
-                }
-              }
-            }
-
-            outputTiles.push(
-              new Tile(
-                tile.tileId,
-                tile.imageData,
-                tile.x,
-                tile.y,
-                tileWidth,
-                tileHeight,
-                borderInfo
-              )
-            );
-
-            continue;
-          }
-
-          throw new Error("zero duplicates in hash map..?");
-        }
-
-        resolve(
-          TileCollection.fromTiles(
-            tiles,
-            tiles.length, // Use actual number of tiles, not total
-            imageWidth,
-            imageHeight,
-            tilesX,
-            tilesY
-          )
-        );
-      } catch (error) {
-        reject(error);
+      if (borderInfo.has(tile.tileId) === false) {
+        borderInfo.set(tile.tileId, [
+          new Set<string>(),
+          new Set<string>(),
+          new Set<string>(),
+          new Set<string>(),
+        ]);
       }
-    };
 
-    img.onerror = () => {
-      reject(new Error("Failed to load image"));
-    };
+      for (let dir = 0; dir < DIRECTIONS.length; dir++) {
+        const { dx, dy } = DIRECTIONS[dir];
+        const neighborX = x + dx;
+        const neighborY = y + dy;
 
-    img.src = imageUrl;
-  });
+        if (
+          neighborX < 0 ||
+          neighborX >= tilesX ||
+          neighborY < 0 ||
+          neighborY >= tilesY
+        ) {
+          continue;
+        }
+
+        borderInfo
+          .get(tile.tileId)!
+          [dir].add(tiles[neighborY * tilesX + neighborX].tileId);
+      }
+    }
+  }
+
+  // emit the canonical tiles.
+  const alreadyEmitted = new Set<string>();
+  let outputTiles: Tile[] = [];
+
+  for (let i = 0; i < tiles.length; i++) {
+    const tile = tiles[i];
+
+    if (alreadyEmitted.has(tile.tileId) === true) {
+      continue;
+    }
+
+    alreadyEmitted.add(tile.tileId);
+
+    outputTiles.push(
+      new Tile(
+        tile.tileId,
+        tile.imageData,
+        tileWidth,
+        tileHeight,
+        borderInfo.get(tile.tileId)!
+      )
+    );
+  }
+
+  return new TileCollection(
+    outputTiles,
+    outputTiles.length,
+    imageWidth,
+    imageHeight,
+    tilesX,
+    tilesY
+  );
 }
