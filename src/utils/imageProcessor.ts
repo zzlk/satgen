@@ -2,17 +2,15 @@ import { Tile } from "./Tile";
 import { TileCollection } from "./TileCollection";
 
 function isPureBlackTile(
-  imageData: ImageData,
+  imageData: Uint8ClampedArray,
   width: number,
   height: number
 ): boolean {
-  const data = imageData.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const a = data[i + 3];
+  for (let i = 0; i < imageData.length; i += 4) {
+    const r = imageData[i];
+    const g = imageData[i + 1];
+    const b = imageData[i + 2];
+    const a = imageData[i + 3];
 
     // Check if pixel is not pure black (RGB all 0) or has some transparency
     if (r > 0 || g > 0 || b > 0 || a < 255) {
@@ -142,18 +140,29 @@ export async function processImageIntoTiles(
         tileHeight
       );
 
-      let tileId = Array.from(
-        new Uint8Array(await crypto.subtle.digest("SHA-256", tileImageData))
-      )
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      if (isPureBlackTile(tileImageData, tileWidth, tileHeight)) {
+        let tileId = "";
 
-      tiles.push({
-        tileId,
-        imageData: tileImageData,
-        x,
-        y,
-      });
+        tiles.push({
+          tileId,
+          imageData: tileImageData,
+          x,
+          y,
+        });
+      } else {
+        let tileId = Array.from(
+          new Uint8Array(await crypto.subtle.digest("SHA-256", tileImageData))
+        )
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        tiles.push({
+          tileId,
+          imageData: tileImageData,
+          x,
+          y,
+        });
+      }
     }
   }
 
@@ -174,6 +183,10 @@ export async function processImageIntoTiles(
     for (let y = 0; y < tilesY; y++) {
       const tile = tiles[y * tilesX + x];
 
+      if (tile.tileId == "") {
+        continue; // ignore null tiles.
+      }
+
       if (borderInfo.has(tile.tileId) === false) {
         borderInfo.set(tile.tileId, [
           new Set<string>(),
@@ -187,19 +200,19 @@ export async function processImageIntoTiles(
         const { dx, dy } = DIRECTIONS[dir];
         const neighborX = x + dx;
         const neighborY = y + dy;
+        const neighbor = tiles[neighborY * tilesX + neighborX];
 
         if (
           neighborX < 0 ||
           neighborX >= tilesX ||
           neighborY < 0 ||
-          neighborY >= tilesY
+          neighborY >= tilesY ||
+          neighbor.tileId == ""
         ) {
           continue;
         }
 
-        borderInfo
-          .get(tile.tileId)!
-          [dir].add(tiles[neighborY * tilesX + neighborX].tileId);
+        borderInfo.get(tile.tileId)![dir].add(neighbor.tileId);
       }
     }
   }
@@ -210,6 +223,10 @@ export async function processImageIntoTiles(
 
   for (let i = 0; i < tiles.length; i++) {
     const tile = tiles[i];
+
+    if (tile.tileId == "") {
+      continue; // ignore null tiles.
+    }
 
     if (alreadyEmitted.has(tile.tileId) === true) {
       continue;
