@@ -12,8 +12,8 @@ import { convertTilesToWave2Format } from "../utils/tileUtils";
 
 export default function () {
   console.log("reender");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [tileWidth, setTileWidth] = useState<number>(32);
   const [tileHeight, setTileHeight] = useState<number>(32);
   const [tileCollection, setTileCollection] = useState<TileCollection | null>(
@@ -118,79 +118,129 @@ export default function () {
     tileImageCache.current.clear();
   }, [enhancedTiles]);
 
-  const handleFileSelect = useCallback((file: File) => {
-    setSelectedFile(file);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    setTileCollection(null); // Clear previous tiles when new image is selected
+  const handleFileSelect = useCallback((files: File[]) => {
+    // Add new files to existing selection
+    setSelectedFiles((prev) => [...prev, ...files]);
+
+    // Create preview URLs for new files
+    const newPreviewUrls = files.map((file) => URL.createObjectURL(file));
+    setPreviewUrls((prev) => [...prev, ...newPreviewUrls]);
+
+    // Clear previous tiles when new images are selected
+    setTileCollection(null);
   }, []);
 
-  const handleFileRemove = useCallback(() => {
-    setSelectedFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
+  const handleFileRemove = useCallback(
+    (fileIndex: number) => {
+      setSelectedFiles((prev) =>
+        prev.filter((_, index) => index !== fileIndex)
+      );
+
+      // Revoke the preview URL to free memory
+      if (previewUrls[fileIndex]) {
+        URL.revokeObjectURL(previewUrls[fileIndex]);
+      }
+      setPreviewUrls((prev) => prev.filter((_, index) => index !== fileIndex));
+
+      // Clear tiles if no files remain
+      if (selectedFiles.length <= 1) {
+        setTileCollection(null);
+      }
+    },
+    [previewUrls, selectedFiles.length]
+  );
+
+  const handleClearAll = useCallback(() => {
+    // Revoke all preview URLs to free memory
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+
+    setSelectedFiles([]);
+    setPreviewUrls([]);
     setTileCollection(null);
-  }, [previewUrl]);
+  }, [previewUrls]);
 
   const cutImageIntoTiles = async () => {
-    if (!previewUrl) return;
+    if (selectedFiles.length === 0) return;
 
     setIsProcessing(true);
 
     try {
-      // Load the image and get its data
-      const img = new Image();
-      img.crossOrigin = "anonymous";
+      let mergedCollection: TileCollection | null = null;
 
-      const imageData = await new Promise<{
-        data: Uint8ClampedArray;
-        width: number;
-        height: number;
-      }>((resolve, reject) => {
-        img.onload = () => {
-          // Create a temporary canvas to extract image data
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            reject(new Error("Could not get canvas context"));
-            return;
-          }
+      // Process each image individually
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const previewUrl = previewUrls[i];
 
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
+        if (!previewUrl) continue;
 
-          // Draw the image to the canvas
-          ctx.drawImage(img, 0, 0);
+        // Load the image and get its data
+        const img = new Image();
+        img.crossOrigin = "anonymous";
 
-          // Extract the image data
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const imageData = await new Promise<{
+          data: Uint8ClampedArray;
+          width: number;
+          height: number;
+        }>((resolve, reject) => {
+          img.onload = () => {
+            // Create a temporary canvas to extract image data
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              reject(new Error("Could not get canvas context"));
+              return;
+            }
 
-          resolve({
-            data: imageData.data,
-            width: canvas.width,
-            height: canvas.height,
-          });
-        };
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
 
-        img.onerror = () => reject(new Error("Failed to load image"));
-        img.src = previewUrl;
-      });
+            // Draw the image to the canvas
+            ctx.drawImage(img, 0, 0);
 
-      // Process the image into tiles
-      const result = await processImageIntoTiles(
-        imageData.data,
-        imageData.width,
-        imageData.height,
-        tileWidth,
-        tileHeight
-      );
+            // Extract the image data
+            const imageData = ctx.getImageData(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
 
-      setTileCollection(result);
+            resolve({
+              data: imageData.data,
+              width: canvas.width,
+              height: canvas.height,
+            });
+          };
+
+          img.onerror = () =>
+            reject(new Error(`Failed to load image: ${file.name}`));
+          img.src = previewUrl;
+        });
+
+        // Process the image into tiles
+        const result = await processImageIntoTiles(
+          imageData.data,
+          imageData.width,
+          imageData.height,
+          tileWidth,
+          tileHeight
+        );
+
+        // Merge with existing collection or create new one
+        if (mergedCollection === null) {
+          mergedCollection = result;
+        } else {
+          mergedCollection.mergeInAnotherCollection(result);
+        }
+      }
+
+      if (mergedCollection) {
+        setTileCollection(mergedCollection);
+      }
     } catch (error) {
-      console.error("Error processing image:", error);
-      alert("Error processing image. Please try again.");
+      console.error("Error processing images:", error);
+      alert("Error processing images. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -205,7 +255,7 @@ export default function () {
     targetHeight?: number
   ) => {
     if (enhancedTiles.length === 0) {
-      alert("Please process an image into tiles first.");
+      alert("Please process images into tiles first.");
       return;
     }
 
@@ -292,11 +342,12 @@ export default function () {
           <FilePicker
             onFileSelect={handleFileSelect}
             onFileRemove={handleFileRemove}
-            selectedFile={selectedFile}
-            previewUrl={previewUrl}
+            onClearAll={handleClearAll}
+            selectedFiles={selectedFiles}
+            previewUrls={previewUrls}
           />
 
-          {selectedFile && (
+          {selectedFiles.length > 0 && (
             <TileConfig
               tileWidth={tileWidth}
               setTileWidth={setTileWidth}
@@ -304,6 +355,7 @@ export default function () {
               setTileHeight={setTileHeight}
               isProcessing={isProcessing}
               onCutImage={cutImageIntoTiles}
+              imageCount={selectedFiles.length}
             />
           )}
 

@@ -7,22 +7,30 @@ interface TileConfigProps {
   setTileHeight: (height: number) => void;
   isProcessing: boolean;
   onCutImage: () => void;
+  imageCount?: number;
 }
 
 export default function TileConfig({
   tileWidth,
   setTileWidth,
-  tileHeight,
   setTileHeight,
+  tileHeight,
   isProcessing,
   onCutImage,
+  imageCount = 1,
 }: TileConfigProps) {
   return (
     <>
       <div className={styles.successMessage}>
-        <h4 className={styles.successTitle}>File Selected Successfully! ✅</h4>
+        <h4 className={styles.successTitle}>
+          {imageCount === 1
+            ? "File Selected Successfully! ✅"
+            : `${imageCount} Images Selected Successfully! ✅`}
+        </h4>
         <p className={styles.successText}>
-          Your image is ready for processing. Configure tile dimensions below.
+          {imageCount === 1
+            ? "Your image is ready for processing. Configure tile dimensions below."
+            : `Your ${imageCount} images are ready for processing. They will be processed individually and merged into a single tile collection. Configure tile dimensions below.`}
         </p>
       </div>
 
@@ -61,7 +69,9 @@ export default function TileConfig({
             disabled={isProcessing}
             className={styles.cutButton}
           >
-            {isProcessing ? "Processing..." : "Cut Image into Tiles"}
+            {isProcessing
+              ? `Processing ${imageCount} image${imageCount > 1 ? "s" : ""}...`
+              : `Cut ${imageCount === 1 ? "Image" : "Images"} into Tiles`}
           </button>
         </div>
       </div>

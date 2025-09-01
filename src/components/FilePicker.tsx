@@ -2,27 +2,30 @@ import { useState, useRef, useCallback } from "react";
 import styles from "./FilePicker.module.css";
 
 interface FilePickerProps {
-  onFileSelect: (file: File) => void;
-  onFileRemove: () => void;
-  selectedFile: File | null;
-  previewUrl: string | null;
+  onFileSelect: (files: File[]) => void;
+  onFileRemove: (fileIndex: number) => void;
+  onClearAll: () => void;
+  selectedFiles: File[];
+  previewUrls: string[];
 }
 
 export default function FilePicker({
   onFileSelect,
   onFileRemove,
-  selectedFile,
-  previewUrl,
+  onClearAll,
+  selectedFiles,
+  previewUrls,
 }: FilePickerProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback(
-    (file: File) => {
-      if (file && file.type.startsWith("image/")) {
-        onFileSelect(file);
+    (files: File[]) => {
+      const validFiles = files.filter((file) => file.type.startsWith("image/"));
+      if (validFiles.length > 0) {
+        onFileSelect(validFiles);
       } else {
-        alert("Please select a valid image file.");
+        alert("Please select valid image files.");
       }
     },
     [onFileSelect]
@@ -31,9 +34,9 @@ export default function FilePicker({
   const handleFileInputChange = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      handleFileSelect(Array.from(files));
     }
   };
 
@@ -53,7 +56,7 @@ export default function FilePicker({
 
     const files = event.dataTransfer.files;
     if (files.length > 0) {
-      handleFileSelect(files[0]);
+      handleFileSelect(Array.from(files));
     }
   };
 
@@ -61,13 +64,18 @@ export default function FilePicker({
     fileInputRef.current?.click();
   };
 
-  const handleRemoveFile = (e: React.MouseEvent) => {
+  const handleRemoveFile = (e: React.MouseEvent, fileIndex: number) => {
     e.stopPropagation();
-    // Clear the file input value so the same file can be selected again
+    onFileRemove(fileIndex);
+  };
+
+  const handleClearAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Clear the file input value so the same files can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    onFileRemove();
+    onClearAll();
   };
 
   return (
@@ -82,37 +90,56 @@ export default function FilePicker({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileInputChange}
         style={{ display: "none" }}
       />
 
-      {!selectedFile ? (
+      {selectedFiles.length === 0 ? (
         <>
           <div className={styles.uploadIcon}>📁</div>
-          <h3 className={styles.uploadTitle}>Drop your image here</h3>
+          <h3 className={styles.uploadTitle}>Drop your images here</h3>
           <p className={styles.uploadSubtitle}>or click to browse files</p>
           <div className={styles.uploadFormats}>
-            Supports: JPG, PNG, GIF, WebP
+            Supports: JPG, PNG, GIF, WebP (Multiple files allowed)
           </div>
         </>
       ) : (
-        <div className={styles.previewContainer}>
-          {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="Preview"
-              className={styles.previewImage}
-            />
-          )}
-          <div className={styles.fileInfo}>
-            <p className={styles.fileName}>{selectedFile.name}</p>
-            <p className={styles.fileSize}>
-              {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-            </p>
+        <div className={styles.multipleFilesContainer}>
+          <div className={styles.filesHeader}>
+            <h4 className={styles.filesTitle}>
+              Selected Images ({selectedFiles.length})
+            </h4>
+            <button onClick={handleClearAll} className={styles.clearAllButton}>
+              Clear All
+            </button>
           </div>
-          <button onClick={handleRemoveFile} className={styles.removeButton}>
-            Remove File
-          </button>
+
+          <div className={styles.filesGrid}>
+            {selectedFiles.map((file, index) => (
+              <div key={`${file.name}-${index}`} className={styles.filePreview}>
+                {previewUrls[index] && (
+                  <img
+                    src={previewUrls[index]}
+                    alt={`Preview ${index + 1}`}
+                    className={styles.previewImage}
+                  />
+                )}
+                <div className={styles.fileInfo}>
+                  <p className={styles.fileName}>{file.name}</p>
+                  <p className={styles.fileSize}>
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => handleRemoveFile(e, index)}
+                  className={styles.removeButton}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
