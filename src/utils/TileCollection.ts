@@ -43,10 +43,7 @@ export class TileCollection {
     );
   }
 
-  // Method to merge duplicate tiles
-  mergeDuplicateTiles(): TileCollection {
-    // For now, just return the same collection
-    // This can be enhanced later if needed
-    return this;
+  mergeInAnotherCollection() {
+    // merge in another collection, combining the border rules appropriately.
   }
 }

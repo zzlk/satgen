@@ -309,7 +309,7 @@ export default function () {
 
           <TileDisplay
             tiles={tileCollection?.tiles || []}
-            onEnhancedTilesChange={setEnhancedTiles}
+            onTilesChange={setEnhancedTiles}
           />
 
           {tileCollection && (
