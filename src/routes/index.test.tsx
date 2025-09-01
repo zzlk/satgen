@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { gen } from "../sat/wave2";
 import { Tile } from "../utils/Tile";
+import { convertTilesToWave2Format } from "../utils/tileUtils";
 
 // Mock the Set intersection polyfill
 if (!Set.prototype.intersection) {
@@ -19,84 +20,61 @@ describe("Wave Function Collapse Integration", () => {
   test("should convert tiles to wave2 format correctly", () => {
     // Create mock tiles
     const tiles: Tile[] = [
-      new Tile("data:image/png;base64,mock1", 0, 0, 32, 32, 2, 2, undefined),
-      new Tile("data:image/png;base64,mock2", 1, 0, 32, 32, 2, 2, undefined),
+      new Tile(
+        "data:image/png;base64,mock1",
+        new Uint8ClampedArray(32 * 32 * 4),
+        32,
+        32,
+        [new Set(), new Set(), new Set(), new Set()],
+        0,
+        0
+      ),
+      new Tile(
+        "data:image/png;base64,mock2",
+        new Uint8ClampedArray(32 * 32 * 4),
+        32,
+        32,
+        [new Set(), new Set(), new Set(), new Set()],
+        1,
+        0
+      ),
     ];
 
     // Set up border connections manually
-    (tiles[0] as any).borders = {
-      north: new Set(["tile_1_0"]),
-      east: new Set(["tile_1_0"]),
-      south: new Set(["tile_1_0"]),
-      west: new Set(["tile_1_0"]),
-    };
+    // borders is [north, east, south, west]
+    tiles[0].borders[0].add(tiles[1].id); // north
+    tiles[0].borders[1].add(tiles[1].id); // east
+    tiles[0].borders[2].add(tiles[1].id); // south
+    tiles[0].borders[3].add(tiles[1].id); // west
 
-    (tiles[1] as any).borders = {
-      north: new Set(["tile_0_0"]),
-      east: new Set(["tile_0_0"]),
-      south: new Set(["tile_0_0"]),
-      west: new Set(["tile_0_0"]),
-    };
+    tiles[1].borders[0].add(tiles[0].id); // north
+    tiles[1].borders[1].add(tiles[0].id); // east
+    tiles[1].borders[2].add(tiles[0].id); // south
+    tiles[1].borders[3].add(tiles[0].id); // west
 
-    // Convert to wave2 format
-    const tileMap = new Map<
-      string,
-      [Set<string>, Set<string>, Set<string>, Set<string>]
-    >();
-
-    // Initialize all tiles with empty connection sets
-    for (const tile of tiles) {
-      tileMap.set(tile.id, [
-        new Set<string>(), // north connections
-        new Set<string>(), // east connections
-        new Set<string>(), // south connections
-        new Set<string>(), // west connections
-      ]);
-    }
-
-    // Populate connections based on tile borders
-    for (const tile of tiles) {
-      const connections = tileMap.get(tile.id)!;
-
-      // North connections (tile's north border can connect to other tiles' south border)
-      for (const northTileId of tile.borders.north) {
-        connections[0].add(northTileId);
-      }
-
-      // East connections (tile's east border can connect to other tiles' west border)
-      for (const eastTileId of tile.borders.east) {
-        connections[1].add(eastTileId);
-      }
-
-      // South connections (tile's south border can connect to other tiles' north border)
-      for (const southTileId of tile.borders.south) {
-        connections[2].add(southTileId);
-      }
-
-      // West connections (tile's west border can connect to other tiles' east border)
-      for (const westTileId of tile.borders.west) {
-        connections[3].add(westTileId);
-      }
-    }
+    // Convert to wave2 format using the actual function
+    const tileMap = convertTilesToWave2Format(tiles);
 
     // Verify the conversion
     expect(tileMap.size).toBe(2);
-    expect(tileMap.has("tile_0_0")).toBe(true);
-    expect(tileMap.has("tile_1_0")).toBe(true);
+    const tile0Id = tiles[0].id;
+    const tile1Id = tiles[1].id;
+    expect(tileMap.has(tile0Id)).toBe(true);
+    expect(tileMap.has(tile1Id)).toBe(true);
 
-    const tile0Connections = tileMap.get("tile_0_0")!;
-    const tile1Connections = tileMap.get("tile_1_0")!;
+    const tile0Connections = tileMap.get(tile0Id)!;
+    const tile1Connections = tileMap.get(tile1Id)!;
 
     // Check that connections are properly set up
-    expect(tile0Connections[0].has("tile_1_0")).toBe(true); // north
-    expect(tile0Connections[1].has("tile_1_0")).toBe(true); // east
-    expect(tile0Connections[2].has("tile_1_0")).toBe(true); // south
-    expect(tile0Connections[3].has("tile_1_0")).toBe(true); // west
+    expect(tile0Connections[0].has(tile1Id)).toBe(true); // north
+    expect(tile0Connections[1].has(tile1Id)).toBe(true); // east
+    expect(tile0Connections[2].has(tile1Id)).toBe(true); // south
+    expect(tile0Connections[3].has(tile1Id)).toBe(true); // west
 
-    expect(tile1Connections[0].has("tile_0_0")).toBe(true); // north
-    expect(tile1Connections[1].has("tile_0_0")).toBe(true); // east
-    expect(tile1Connections[2].has("tile_0_0")).toBe(true); // south
-    expect(tile1Connections[3].has("tile_0_0")).toBe(true); // west
+    expect(tile1Connections[0].has(tile0Id)).toBe(true); // north
+    expect(tile1Connections[1].has(tile0Id)).toBe(true); // east
+    expect(tile1Connections[2].has(tile0Id)).toBe(true); // south
+    expect(tile1Connections[3].has(tile0Id)).toBe(true); // west
   });
 
   test("should generate valid arrangement with wave2 algorithm", () => {

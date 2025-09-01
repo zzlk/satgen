@@ -77,7 +77,7 @@ export default function () {
       if (!ctx) return;
 
       const pixelX = x * tileWidth;
-      const pixelY = y * tileHeight;
+      const pixelY = canvas.height - (y + 1) * tileHeight;
 
       if (tileId === null) {
         // Draw pure red for null tiles
@@ -91,7 +91,7 @@ export default function () {
         }
       }
     },
-    [tileWidth, tileHeight]
+    [tileWidth, tileHeight, synthesizeHeight]
   );
 
   // Function to initialize canvas
@@ -140,26 +140,54 @@ export default function () {
     setIsProcessing(true);
 
     try {
-      // load the image without using the canvas api, and get the image data
-      // as a raw Uint8ClampedArray
-      const image = new Image();
-      image.src = previewUrl;
-      image.onload = () => {
-        const imageData = new Uint8ClampedArray(image.width * image.height * 4);
-        imageData.set(new Uint8ClampedArray(image.data));
-      };
+      // Load the image and get its data
+      const img = new Image();
+      img.crossOrigin = "anonymous";
 
- 
-      // process the image into tiles
+      const imageData = await new Promise<{
+        data: Uint8ClampedArray;
+        width: number;
+        height: number;
+      }>((resolve, reject) => {
+        img.onload = () => {
+          // Create a temporary canvas to extract image data
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("Could not get canvas context"));
+            return;
+          }
+
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+
+          // Draw the image to the canvas
+          ctx.drawImage(img, 0, 0);
+
+          // Extract the image data
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          resolve({
+            data: imageData.data,
+            width: canvas.width,
+            height: canvas.height,
+          });
+        };
+
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = previewUrl;
+      });
+
+      // Process the image into tiles
       const result = await processImageIntoTiles(
-        image.da
-        imageWidth,
-        imageHeight,
+        imageData.data,
+        imageData.width,
+        imageData.height,
         tileWidth,
-        tileHeight,
+        tileHeight
       );
 
-      setTileCollection(result.tiles);
+      setTileCollection(result);
     } catch (error) {
       console.error("Error processing image:", error);
       alert("Error processing image. Please try again.");

@@ -26,22 +26,22 @@ export const convertTilesToWave2Format = (tiles: Tile[]) => {
     const connections = tileMap.get(tile.id)!;
 
     // North connections (tile's north border can connect to other tiles' south border)
-    for (const northTileId of tile.borders.north) {
+    for (const northTileId of tile.borders[0]) {
       connections[2].add(northTileId);
     }
 
     // East connections (tile's east border can connect to other tiles' west border)
-    for (const eastTileId of tile.borders.east) {
+    for (const eastTileId of tile.borders[1]) {
       connections[1].add(eastTileId);
     }
 
     // South connections (tile's south border can connect to other tiles' north border)
-    for (const southTileId of tile.borders.south) {
+    for (const southTileId of tile.borders[2]) {
       connections[0].add(southTileId);
     }
 
     // West connections (tile's west border can connect to other tiles' east border)
-    for (const westTileId of tile.borders.west) {
+    for (const westTileId of tile.borders[3]) {
       connections[3].add(westTileId);
     }
   }

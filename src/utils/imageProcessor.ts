@@ -116,6 +116,8 @@ export async function processImageIntoTiles(
   const tiles: {
     tileId: string;
     imageData: Uint8ClampedArray;
+    x: number;
+    y: number;
   }[] = [];
 
   for (let y = 0; y < tilesY; y++) {
@@ -149,6 +151,8 @@ export async function processImageIntoTiles(
       tiles.push({
         tileId,
         imageData: tileImageData,
+        x,
+        y,
       });
     }
   }
@@ -219,7 +223,9 @@ export async function processImageIntoTiles(
         tile.imageData,
         tileWidth,
         tileHeight,
-        borderInfo.get(tile.tileId)!
+        borderInfo.get(tile.tileId)!,
+        tile.x,
+        tile.y
       )
     );
   }

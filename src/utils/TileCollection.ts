@@ -23,4 +23,30 @@ export class TileCollection {
     this.tilesX = tilesX;
     this.tilesY = tilesY;
   }
+
+  // Static method to create TileCollection from tiles
+  static fromTiles(
+    tiles: Tile[],
+    totalTiles: number,
+    imageWidth: number,
+    imageHeight: number,
+    tilesX: number,
+    tilesY: number
+  ): TileCollection {
+    return new TileCollection(
+      tiles,
+      totalTiles,
+      imageWidth,
+      imageHeight,
+      tilesX,
+      tilesY
+    );
+  }
+
+  // Method to merge duplicate tiles
+  mergeDuplicateTiles(): TileCollection {
+    // For now, just return the same collection
+    // This can be enhanced later if needed
+    return this;
+  }
 }
