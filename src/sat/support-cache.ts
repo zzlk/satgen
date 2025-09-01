@@ -88,17 +88,13 @@ export class SupportCache {
     this.totalCalculations++;
 
     // Calculate support using more efficient union operations
-    let support: Bitset | null = null;
+    let support: Bitset = new Bitset(bitsetSize);
 
     // Use a more efficient approach: union all direction sets for tiles in the cell
     for (const tileId of cell.keys()) {
       const directionSet = tiles.get(tileId)![direction];
-      if (support === null) {
-        support = directionSet.clone();
-      } else {
-        // Use in-place union for better performance
-        support.unionInPlace(directionSet);
-      }
+
+      support.unionInPlace(directionSet);
     }
 
     // Cache the result with LRU-style eviction

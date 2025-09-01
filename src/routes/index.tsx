@@ -34,11 +34,16 @@ export default function () {
 
   // Preload tiles as ImageBitmaps for better performance
   const preloadTiles = useCallback(async () => {
-    const promises: Promise<void>[] = [];
+    const tilesToPreload = enhancedTiles.filter(
+      (tile) => !tileImageCache.current.has(tile.id)
+    );
 
-    for (const tile of enhancedTiles) {
-      if (!tileImageCache.current.has(tile.id)) {
-        const promise = fetch(tile.dataUrl)
+    // Process tiles in batches of 10 to avoid overwhelming the system
+    const batchSize = 10;
+    for (let i = 0; i < tilesToPreload.length; i += batchSize) {
+      const batch = tilesToPreload.slice(i, i + batchSize);
+      const batchPromises = batch.map((tile) =>
+        fetch(tile.dataUrl)
           .then((response) => response.blob())
           .then((blob) => createImageBitmap(blob))
           .then((imageBitmap) => {
@@ -46,12 +51,12 @@ export default function () {
           })
           .catch((error) => {
             console.error(`Error preloading tile ${tile.id}:`, error);
-          });
-        promises.push(promise);
-      }
-    }
+          })
+      );
 
-    await Promise.all(promises);
+      // Wait for current batch to complete before moving to next batch
+      await Promise.all(batchPromises);
+    }
   }, [enhancedTiles]);
 
   // Clear canvas
