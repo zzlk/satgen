@@ -111,7 +111,7 @@ export default function () {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         // Fill canvas with magenta initially
-        ctx.fillStyle = "#FF00FF";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
     },
