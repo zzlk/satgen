@@ -131,7 +131,7 @@ function* propagateRemoval(
 > {
   const backup = new Map<{ x: number; y: number }, Bitset>();
 
-  const queue = new Array<{ x: number; y: number }>();
+  const queue = new Array<{ x: number; y: number; c: number }>();
 
   // Push the four neighbors of {x, y}
   for (const direction of DIRECTIONS) {
@@ -142,11 +142,13 @@ function* propagateRemoval(
       continue;
     }
 
-    queue.push({ x: dx, y: dy });
+    queue.push({ x: dx, y: dy, c: cells[dy * width + dx].count() });
   }
 
   while (queue.length > 0) {
-    let { x, y } = queue.shift()!;
+    queue.sort((a, b) => b.c - a.c);
+    // queue.sort((a, b) => (a.x == b.x ? a.y - b.y : a.x - b.x));
+    let { x, y } = queue.pop()!;
 
     const cellBackup = cells[y * width + x].clone();
 
@@ -165,10 +167,12 @@ function* propagateRemoval(
       );
 
       // remove unsupported tiles.
-      cells[y * width + x] = cells[y * width + x].intersection(support);
+      cells[y * width + x].intersectInPlace(support);
     }
 
-    switch (cells[y * width + x].count()) {
+    let c = cells[y * width + x].count();
+
+    switch (c) {
       case 0:
         cells[y * width + x] = cellBackup;
 
@@ -201,7 +205,7 @@ function* propagateRemoval(
           continue;
         }
 
-        queue.push({ x: nx, y: ny });
+        queue.push({ x: nx, y: ny, c });
       }
     }
   }
@@ -289,10 +293,15 @@ function* WaveFunctionGenerateInternalWithResetting(
   while (true) {
     iteration = iteration + 1;
 
-    const nextCell = findMinimalCell(width, height, cells);
+    let nextCell = null;
 
-    if (nextCell === null) {
-      return;
+    if (iteration === 0) {
+      nextCell = { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+    } else {
+      nextCell = findMinimalCell(width, height, cells);
+      if (nextCell === null) {
+        return;
+      }
     }
 
     const { x, y } = nextCell;

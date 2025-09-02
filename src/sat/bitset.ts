@@ -11,6 +11,10 @@ class Bitset {
     this.bits = new Uint32Array(arraySize);
   }
 
+  getUnderlying(): Uint32Array {
+    return this.bits;
+  }
+
   /**
    * Creates a new bitset with all bits set to 1
    * @param maxValue The maximum value (exclusive) for the bitset

@@ -4,9 +4,7 @@ import type { MappedTile } from "./mappedtile";
 // Support cache to avoid recalculating the same support values
 interface SupportCacheEntry {
   cell: Bitset;
-  direction: number;
   support: Bitset;
-  hash: number;
 }
 
 export class SupportCache {
@@ -21,12 +19,12 @@ export class SupportCache {
   // Generate an efficient numeric hash for a bitset using the underlying Uint32Array data
   private bitsetHash(bitset: Bitset): number {
     // Access the private bits array using bracket notation to get the underlying data
-    const bits = (bitset as any).bits as Uint32Array;
+    const bits = bitset.getUnderlying();
     let hash = 0;
 
     // Use a simple but effective hash function (djb2 variant)
-    for (let i = 0; i < bits.length; i++) {
-      hash = ((hash << 5) - hash + bits[i]) | 0; // | 0 ensures 32-bit integer
+    for (const b of bits) {
+      hash = ((hash << 5) - hash + b) | 0; // | 0 ensures 32-bit integer
     }
 
     return hash;
@@ -81,7 +79,7 @@ export class SupportCache {
     const cached = this.cache.get(cacheKey);
     if (cached && cached.cell.equals(cell)) {
       this.hits++;
-      return cached.support.clone();
+      return cached.support;
     }
 
     this.misses++;
@@ -93,33 +91,30 @@ export class SupportCache {
     // Use a more efficient approach: union all direction sets for tiles in the cell
     for (const tileId of cell.keys()) {
       const directionSet = tiles[tileId].borderInfo[direction];
-
       support.unionInPlace(directionSet);
     }
 
-    // Cache the result with LRU-style eviction
-    if (this.cache.size >= this.maxCacheSize) {
-      // Remove oldest entries to make room
-      const entriesToRemove = Array.from(this.cache.keys()).slice(
-        0,
-        this.evictionBatchSize
-      );
-      for (const key of entriesToRemove) {
-        this.cache.delete(key);
-      }
-    }
+    // // Cache the result with LRU-style eviction
+    // if (this.cache.size >= this.maxCacheSize) {
+    //   // Remove oldest entries to make room
+    //   const entriesToRemove = Array.from(this.cache.keys()).slice(
+    //     0,
+    //     this.evictionBatchSize
+    //   );
+    //   for (const key of entriesToRemove) {
+    //     this.cache.delete(key);
+    //   }
+    // }
 
     this.cache.set(cacheKey, {
       cell: cell.clone(),
-      direction,
-      support: support!.clone(),
-      hash: cellHash,
+      support: support,
     });
 
     // Track peak cache size
-    if (this.cache.size > this.cacheSizePeak) {
-      this.cacheSizePeak = this.cache.size;
-    }
+    // if (this.cache.size > this.cacheSizePeak) {
+    //   this.cacheSizePeak = this.cache.size;
+    // }
 
     return support!;
   }

@@ -320,7 +320,7 @@ export default function () {
         // Update canvas with the new tile
         drawTileToCanvas(tileUpdate.x, tileUpdate.y, tileUpdate.tile);
 
-        if (iteration % 1 == 0) {
+        if (iteration % 10 == 0) {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
