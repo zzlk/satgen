@@ -1,6 +1,7 @@
 import { deterministicShuffle } from "./deterministicShuffle";
 import Bitset from "./bitset";
 import { SupportCache } from "./support-cache";
+import type { MappedTile } from "./mappedtile";
 
 // cool idea for initializing the board
 // sweep across
@@ -22,7 +23,7 @@ const DIRECTIONS: Array<{
 ];
 
 function assertBorderConditionsForAllCells(
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
+  tiles: MappedTile[],
   bitsetSize: number,
   width: number,
   height: number,
@@ -30,8 +31,7 @@ function assertBorderConditionsForAllCells(
   cache: SupportCache
 ) {
   function assertBorderConditionsForCell(
-    tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-    bitsetSize: number,
+    tiles: MappedTile[],
     width: number,
     height: number,
     cells: Array<Bitset>,
@@ -50,7 +50,6 @@ function assertBorderConditionsForAllCells(
       // Check that the neighbors support the current cell
       const support = cache.calculateSupport(
         tiles,
-        bitsetSize,
         cells[ny * width + nx],
         (direction.d + 2) % 4
       );
@@ -62,7 +61,6 @@ function assertBorderConditionsForAllCells(
       // Check that the current cell (x, y) supports all neighbors
       const neighborSupport = cache.calculateSupport(
         tiles,
-        bitsetSize,
         cells[y * width + x],
         direction.d
       );
@@ -75,16 +73,7 @@ function assertBorderConditionsForAllCells(
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      assertBorderConditionsForCell(
-        tiles,
-        bitsetSize,
-        width,
-        height,
-        cells,
-        x,
-        y,
-        cache
-      );
+      assertBorderConditionsForCell(tiles, width, height, cells, x, y, cache);
     }
   }
 }
@@ -129,9 +118,7 @@ function findMinimalCell(
 }
 
 function* propagateRemoval(
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-  inverseTileMap: Map<number, string>,
-  bitsetSize: number,
+  tiles: MappedTile[],
   width: number,
   height: number,
   cells: Array<Bitset>,
@@ -173,7 +160,6 @@ function* propagateRemoval(
 
       const support = cache.calculateSupport(
         tiles,
-        bitsetSize,
         cells[ny * width + nx],
         (direction.d + 2) % 4
       );
@@ -198,7 +184,7 @@ function* propagateRemoval(
 
       case 1:
         const tile = cells[y * width + x].keys().next().value;
-        yield { x, y, tile: inverseTileMap.get(tile)! };
+        yield { x, y, tile: tiles[tile].tileId };
     }
 
     // If the cell was modified, then push all of it's neighbors, since they need to be checked now.
@@ -224,10 +210,8 @@ function* propagateRemoval(
 }
 
 function* resetCells(
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-  inverseTileMap: Map<number, string>,
+  tiles: MappedTile[],
   cache: SupportCache,
-  bitsetSize: number,
   x: number,
   y: number,
   radius: number,
@@ -248,7 +232,7 @@ function* resetCells(
             continue;
           }
 
-          cells[ny * cellsWidth + nx] = Bitset.createFull(bitsetSize);
+          cells[ny * cellsWidth + nx] = Bitset.createFull(tiles.length);
           yield { x: nx, y: ny, tile: null };
         }
       }
@@ -266,8 +250,6 @@ function* resetCells(
           if (
             (yield* propagateRemoval(
               tiles,
-              inverseTileMap,
-              bitsetSize,
               cellsWidth,
               cellsHeight,
               cells,
@@ -292,10 +274,7 @@ function* resetCells(
 
 function* WaveFunctionGenerateInternalWithResetting(
   recursionDepth: number,
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-  tilemap: Map<string, number>,
-  inverseTileMap: Map<number, string>,
-  bitsetSize: number,
+  tiles: MappedTile[],
   width: number,
   height: number,
   seed: number,
@@ -335,12 +314,10 @@ function* WaveFunctionGenerateInternalWithResetting(
 
     cells[y * width + x].clear();
     cells[y * width + x].set(tile, true);
-    yield { x, y, tile: inverseTileMap.get(tile)! };
+    yield { x, y, tile: tiles[tile].tileId };
 
     const unsatAt = yield* propagateRemoval(
       tiles,
-      inverseTileMap,
-      bitsetSize,
       width,
       height,
       cells,
@@ -369,9 +346,7 @@ function* WaveFunctionGenerateInternalWithResetting(
 
       yield* resetCells(
         tiles,
-        inverseTileMap,
         cache,
-        bitsetSize,
         x,
         y,
         resetRadius + radiusBooster,
@@ -382,9 +357,7 @@ function* WaveFunctionGenerateInternalWithResetting(
 
       yield* resetCells(
         tiles,
-        inverseTileMap,
         cache,
-        bitsetSize,
         unsatAt.x,
         unsatAt.y,
         resetRadius + radiusBooster,
@@ -402,10 +375,7 @@ function* WaveFunctionGenerateInternalWithResetting(
 
 function* WaveFunctionGenerateWithBacktracking(
   recursionDepth: number,
-  tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-  tilemap: Map<string, number>,
-  inverseTileMap: Map<number, string>,
-  bitsetSize: number,
+  tiles: MappedTile[],
   width: number,
   height: number,
   seed: number,
@@ -440,14 +410,12 @@ function* WaveFunctionGenerateWithBacktracking(
 
           cells[y * width + x].clear();
           cells[y * width + x].set(tile, true);
-          yield { x, y, tile: inverseTileMap.get(tile)! };
+          yield { x, y, tile: tiles[tile].tileId };
 
           // propagate the effects of the removal
           if (
             (yield* propagateRemoval(
               tiles,
-              inverseTileMap,
-              bitsetSize,
               width,
               height,
               cells,
@@ -466,9 +434,6 @@ function* WaveFunctionGenerateWithBacktracking(
           const ret = yield* WaveFunctionGenerateWithBacktracking(
             recursionDepth + 1,
             tiles,
-            tilemap,
-            inverseTileMap,
-            bitsetSize,
             width,
             height,
             seed + 1,
@@ -494,9 +459,7 @@ function* WaveFunctionGenerateWithBacktracking(
 function remapTiles(
   tiles: Map<string, [Set<string>, Set<string>, Set<string>, Set<string>]>
 ): {
-  tileMap: Map<string, number>;
-  inverseTileMap: Map<number, string>;
-  newTiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>;
+  newTiles: MappedTile[];
   bitsetSize: number;
 } {
   const tileMap = new Map<string, number>();
@@ -511,7 +474,11 @@ function remapTiles(
     inverseTileMap.set(index, tile);
   }
 
-  const newTiles = new Map<number, [Bitset, Bitset, Bitset, Bitset]>();
+  const newTiles: {
+    tileId: string;
+    mappedTileId: number;
+    borderInfo: [Bitset, Bitset, Bitset, Bitset];
+  }[] = [];
 
   const bitsetSize = Math.max(...tileMap.values()) + 1;
 
@@ -536,10 +503,16 @@ function remapTiles(
       westBitset.set(tileMap.get(t)!, true);
     }
 
-    newTiles.set(tileId, [northBitset, eastBitset, southBitset, westBitset]);
+    newTiles.push({
+      tileId: tile,
+      mappedTileId: tileId,
+      borderInfo: [northBitset, eastBitset, southBitset, westBitset],
+    });
   }
 
-  return { tileMap, inverseTileMap, newTiles, bitsetSize };
+  newTiles.sort((a, b) => a.mappedTileId - b.mappedTileId);
+
+  return { newTiles, bitsetSize };
 }
 
 export function* gen(
@@ -571,7 +544,7 @@ export function* gen(
   }
 
   // Remap tiles from string ids to sequential integers so they can be efficiently packed into bitsets
-  const { tileMap, inverseTileMap, newTiles, bitsetSize } = remapTiles(tiles);
+  const { newTiles, bitsetSize } = remapTiles(tiles);
 
   // initialize initial cells to all possible tiles
   const allTileCell = new Bitset(bitsetSize);
@@ -589,8 +562,6 @@ export function* gen(
       if (
         (yield* propagateRemoval(
           newTiles,
-          inverseTileMap,
-          bitsetSize,
           width,
           height,
           cells,
@@ -608,9 +579,6 @@ export function* gen(
   const result = yield* WaveFunctionGenerateInternalWithResetting(
     0,
     newTiles,
-    tileMap,
-    inverseTileMap,
-    bitsetSize,
     width,
     height,
     seed,

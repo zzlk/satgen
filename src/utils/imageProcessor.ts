@@ -23,16 +23,6 @@ function isPureBlackTile(
   return true;
 }
 
-function generateId() {
-  const chars =
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  let id = "";
-  for (let i = 0; i < 24; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
-
 export function bitBlt(
   source: Uint8ClampedArray,
   sourceWidth: number,

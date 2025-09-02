@@ -1,4 +1,5 @@
 import Bitset from "./bitset";
+import type { MappedTile } from "./mappedtile";
 
 // Support cache to avoid recalculating the same support values
 interface SupportCacheEntry {
@@ -68,8 +69,7 @@ export class SupportCache {
   }
 
   calculateSupport(
-    tiles: Map<number, [Bitset, Bitset, Bitset, Bitset]>,
-    bitsetSize: number,
+    tiles: MappedTile[],
     cell: Bitset,
     direction: number
   ): Bitset {
@@ -88,11 +88,11 @@ export class SupportCache {
     this.totalCalculations++;
 
     // Calculate support using more efficient union operations
-    let support: Bitset = new Bitset(bitsetSize);
+    let support: Bitset = new Bitset(tiles.length);
 
     // Use a more efficient approach: union all direction sets for tiles in the cell
     for (const tileId of cell.keys()) {
-      const directionSet = tiles.get(tileId)![direction];
+      const directionSet = tiles[tileId].borderInfo[direction];
 
       support.unionInPlace(directionSet);
     }
